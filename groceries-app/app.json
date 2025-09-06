@@ -1,5 +1,43 @@
 {
-  "plugins": [
-    "expo-router"
-  ]
+
+  "expo": {
+    "name": "groceries-app",
+    "slug": "groceries-app",
+
+    "scheme": "groceries",
+
+    "splash": {
+      "image": "./assets/logo.jpg",
+      "resizeMode": "contain",
+      "backgroundColor": "#FD1648"
+    },
+
+    "extra": {
+      "EXPO_PUBLIC_API_URL": "http://192.168.0.17:8000"
+    },
+
+    "plugins": ["expo-router"],
+
+    "router": {
+      "root": "src/app/pages"
+    },
+
+    "userInterfaceStyle": "light",
+
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#ffffff"
+      },
+      "edgeToEdge": true
+    },
+
+    "ios": {
+      "supportsTablet": true
+    },
+
+    "web": {
+      "favicon": "./assets/favicon.png"
+    }
+  }
 }

@@ -1,39 +1,81 @@
+// src/api/clients.ts
+import Constants from "expo-constants";
 import * as SecureStore from "expo-secure-store";
 
-// Expo expone EXPO_PUBLIC_* en process.env en runtime
-const BASE_URL =
-  process.env.EXPO_PUBLIC_API_URL ??
-  "http://10.0.2.2:8000"; // fallback útil en emulador
+// 1) Resolver BASE_URL desde varios lugares y normalizar
+const cfg = (Constants?.expoConfig as any) ?? {};
+const fromExtra = cfg?.extra?.EXPO_PUBLIC_API_URL;
+const fromEnv = process.env.EXPO_PUBLIC_API_URL;
+const RAW_BASE = (fromEnv || fromExtra || "").trim();
+export const BASE_URL = RAW_BASE.replace(/\/+$/, ""); // sin slash final
+
+if (!BASE_URL) {
+  console.warn("⚠️ BASE_URL vacío. Configurá EXPO_PUBLIC_API_URL en app.json o .env");
+} else {
+  console.log("🌐 BASE_URL =", BASE_URL);
+}
+
+// 2) Helpers de token (usá SIEMPRE la misma key en todo el app)
+const TOKEN_KEY = "access_token";
+let memoryToken: string | null = null; 
+
+export async function getToken() {
+  if (memoryToken != null) return memoryToken;
+  memoryToken = (await SecureStore.getItemAsync(TOKEN_KEY)) || null;
+  return memoryToken;
+}
+
+export async function setToken(t: string | null) {
+  memoryToken = t; 
+  if (!t) return SecureStore.deleteItemAsync(TOKEN_KEY);
+  return SecureStore.setItemAsync(TOKEN_KEY, t);
+}
 
 export class ApiError<T = unknown> extends Error {
   status: number;
   data?: T;
   constructor(message: string, status: number, data?: T) {
-    super(message); this.status = status; this.data = data;
+    super(message);
+    this.status = status;
+    this.data = data;
   }
 }
 
-export async function getToken() {
-  return (await SecureStore.getItemAsync("access_token")) || null;
-}
-export async function setToken(t: string | null) {
-  if (!t) return SecureStore.deleteItemAsync("access_token");
-  return SecureStore.setItemAsync("access_token", t);
-}
+// 3) Request con armado de URL seguro y logs
+export async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
+  if (!BASE_URL) {
+    throw new Error("BASE_URL no configurada");
+  }
 
-export async function request<T>(
-  path: string,
-  init: RequestInit = {}
-): Promise<T> {
   const token = await getToken();
+  const safePath = path.startsWith("/") ? path : `/${path}`;
+  const url = `${BASE_URL}${safePath}`;
+
+  
   const headers: HeadersInit = {
-    "Content-Type": init.body instanceof FormData ? (undefined as any) : "application/json",
+    ...(init.body instanceof FormData ? {} : { "Content-Type": "application/json" }),
     ...(token ? { Authorization: `Bearer ${token}` } : {}),
     ...(init.headers || {}),
   };
-  const res = await fetch(`${BASE_URL}${path}`, { ...init, headers });
+
+  // LOGS ÚTILES
+  console.log("➡️ fetch", init.method || "GET", url);
+
+  let res: Response;
+  try {
+    res = await fetch(url, { ...init, headers });
+  } catch (netErr: any) {
+    // Esto captura 'Network request failed'
+    console.error("❌ Network error:", netErr?.message || netErr);
+    throw new Error("No se pudo conectar al servidor. Verificá IP/puerto/firewall.");
+  }
+
   const isJson = res.headers.get("content-type")?.includes("application/json");
   const data = isJson ? await res.json().catch(() => undefined) : undefined;
-  if (!res.ok) throw new ApiError(data?.message || res.statusText || "Request failed", res.status, data);
+
+  if (!res.ok) {
+    const msg = (data as any)?.message || `${res.status} ${res.statusText}`;
+    throw new ApiError(msg, res.status, data);
+  }
   return data as T;
 }

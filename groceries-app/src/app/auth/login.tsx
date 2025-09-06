@@ -1,19 +1,17 @@
 // app/(auth)/login.tsx
-import { Link } from "expo-router";
+import { useRouter } from "expo-router";
 import { useMemo, useState } from "react";
 import { Image, KeyboardAvoidingView, Platform, Pressable, ScrollView, View } from "react-native";
-
-import { Button } from "../../../components/ui/Button";
-import { Divider } from "../../../components/ui/Divider";
-import { FormField } from "../../../components/ui/FormField";
-import { GoogleButton } from "../../../components/ui/GoogleButton";
-import { CheckBadge } from "../../../components/ui/Helpers";
-import { Input } from "../../../components/ui/Input";
-import { PasswordInput } from "../../../components/ui/PasswordInput";
-import { Text } from "../../../components/ui/Text";
-
-import { useAuth } from "../../../providers/auth";
-import { useTheme } from "../../../providers/theme";
+import { Button } from "../../components/ui/Button";
+import { Divider } from "../../components/ui/Divider";
+import { FormField } from "../../components/ui/FormField";
+import { GoogleButton } from "../../components/ui/GoogleButton";
+import { CheckBadge } from "../../components/ui/Helpers";
+import { Input } from "../../components/ui/Input";
+import { PasswordInput } from "../../components/ui/PasswordInput";
+import { Text } from "../../components/ui/Text";
+import { useAuth } from "../../providers/auth";
+import { useTheme } from "../../providers/theme";
 
 function isValidEmail(v: string) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v);
@@ -22,6 +20,7 @@ function isValidEmail(v: string) {
 export default function Login() {
   const { colors, spacing, radii } = useTheme();
   const { login } = useAuth();
+  const router = useRouter();
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -36,7 +35,8 @@ export default function Login() {
     setErr(null);
     setSubmitting(true);
     try {
-      await login(email, password); // usa /auth/login + /auth/me
+      await login(email, password);
+      router.replace("/home");
     } catch (e: any) {
       setErr(e?.message ?? "No se pudo iniciar sesión");
       setSubmitting(false);
@@ -50,7 +50,7 @@ export default function Login() {
           {/* LOGO */}
           <View style={{ height: 120, alignItems: "center", justifyContent: "center" }}>
             {/* Reemplazá por tu asset si ya lo tenés: */}
-            <Image source={require("../../../../assets/logo.jpg")} style={{ width: 160, height: 48, resizeMode: "contain" }} />
+            <Image source={require("../../../assets/logo.jpg")} style={{ width: 160, height: 48, resizeMode: "contain" }} />
             <View
               style={{
                 width: 160,
@@ -113,9 +113,9 @@ export default function Login() {
           <View style={{ alignItems: "center", marginTop: spacing.sm }}>
             <Text style={{ color: colors.gray600 }}>
               ¿No tenés una cuenta?{" "}
-              <Link href="/(auth)/register">
+              <Pressable onPress={() => router.push("/(auth)/register")}>
                 <Text style={{ color: colors.secondary, fontWeight: "700" }}>Registrate</Text>
-              </Link>
+              </Pressable>
             </Text>
           </View>
 
