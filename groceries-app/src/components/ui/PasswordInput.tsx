@@ -1,5 +1,6 @@
+import { Ionicons } from "@expo/vector-icons";
 import { useState } from "react";
-import { Pressable, Text } from "react-native";
+import { Pressable } from "react-native";
 import { useTheme } from "../../providers/theme";
 import { Input } from "./Input";
 
@@ -20,9 +21,14 @@ export function PasswordInput({
       />
       <Pressable
         onPress={() => setShow(s => !s)}
-        style={{ position: "absolute", right: 10, top: 12, padding: 6 }}
+        style={{ position: "absolute", right: 12, top: 12, padding: 4 }}
+        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
       >
-        <Text style={{ color: colors.gray600 }}>{show ? "🙈" : "👁️"}</Text>
+        <Ionicons 
+          name={show ? "eye-off-outline" : "eye-outline"} 
+          size={20} 
+          color={colors.gray600} 
+        />
       </Pressable>
     </>
   );

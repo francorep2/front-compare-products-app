@@ -7,6 +7,7 @@ const { colors, radii, spacing } = useTheme()
 return (
 <TextInput
 {...props}
+scrollEnabled={false}
 placeholderTextColor={colors.gray500}
 style={[{ borderColor: colors.border, borderWidth: 1, borderRadius: radii.sm, paddingHorizontal: spacing.sm, paddingVertical: 10, color: colors.text, backgroundColor: colors.white }, props.style]}
 />

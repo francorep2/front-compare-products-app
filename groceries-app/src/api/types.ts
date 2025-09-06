@@ -30,6 +30,7 @@ export interface ShoppingItemOut {
   nombre: string;
   cantidad: string;
   created_at: string;
+  done: boolean;
 }
 
 export interface ShoppingListDetail {
@@ -51,3 +52,73 @@ export interface SearchResponse {
   source: string;
   items: SearchItem[];
 }
+export type RegisterStartIn = {
+  first_name: string;
+  last_name: string;
+  email: string;
+  password: string;
+};
+
+export type RegisterStartOut = {
+  challenge_id: string;
+  email: string;
+  message: string;
+};
+
+export type RegisterVerifyIn = {
+  challenge_id: string;
+  code: string;
+};
+
+export type RegisterResendOut = { 
+  challenge_id: string; 
+  message: string 
+};
+
+export type PasswordResetStartIn = { 
+  email: string 
+};
+export type PasswordResetVerifyIn = { 
+  challenge_id: string;
+  code: string 
+};
+export type ResetTokenOut = { 
+  reset_token: string 
+};
+export type PasswordResetConfirmIn = { 
+  reset_token: string; 
+  new_password: string 
+};
+export type PasswordResetResendOut = { 
+  challenge_id: string;
+  message: string 
+};
+export type PasswordResetStartOut = { 
+  challenge_id?: string;
+  message: string 
+};
+
+export type UpdateMeIn = Partial<{
+  password: string;
+  email: string;
+  first_name: string;
+  last_name: string;
+}>;
+export type ShoppingListCreateIn = { 
+  nombre: string 
+};
+
+export type ShoppingListRenameIn = { 
+  nombre: string
+ };
+
+export type ShoppingItemCreateIn = { 
+  nombre: string; 
+  cantidad: string
+ };
+export type ShoppingItemUpdateIn = { 
+  nombre?: string | null;
+  cantidad?: string | null; 
+  done?: boolean | null;
+};
+

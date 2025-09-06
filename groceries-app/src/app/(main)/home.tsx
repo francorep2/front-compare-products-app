@@ -2,12 +2,12 @@ import { useRouter } from "expo-router";
 import { useEffect, useState } from "react";
 import { ActivityIndicator, View } from "react-native";
 
-import { getToken, setToken } from "../api/clients";
-import { me } from "../api/endpoints";
-import type { MeOut } from "../api/types";
-import { Button } from "../components/ui/Button";
-import { Text } from "../components/ui/Text";
-import { styles } from "../styles/home";
+import { getToken, setToken } from "../../api/clients";
+import { me } from "../../api/endpoints";
+import type { MeOut } from "../../api/types";
+import { Button } from "../../components/ui/Button";
+import { Text } from "../../components/ui/Text";
+import { styles } from "../../styles/home";
 
 
 export default function Home() {
@@ -21,7 +21,7 @@ export default function Home() {
       try {
         const token = await getToken(); 
         if (!token) {
-          router.replace("/auth/login");
+          router.replace("/login");
           return;
         }
         const data = await me(); 
@@ -46,7 +46,7 @@ export default function Home() {
     return (
       <View style={styles.center}>
         <Text style={styles.errorText}>{error}</Text>
-        <Button title="Volver a login" onPress={() => router.replace("/auth/login")} />
+        <Button title="Volver a login" onPress={() => router.replace("/login")} />
       </View>
     );
   }
@@ -61,7 +61,7 @@ export default function Home() {
         title="Cerrar sesión"
         onPress={async () => {
           await setToken(null);           // 👈 borra "access_token" de forma consistente
-          router.replace("/auth/login");
+          router.replace("/login");
         }}
       />
     </View>
