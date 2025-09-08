@@ -10,6 +10,8 @@ import type {
   // register
   RegisterStartIn, RegisterStartOut, RegisterVerifyIn,
   ResetTokenOut,
+  SearchHit,
+  SearchRawResponse,
   ShoppingItemCreateIn,
   ShoppingItemOut,
   ShoppingItemUpdateIn,
@@ -95,3 +97,6 @@ export const updateItem = (itemId: number, payload: ShoppingItemUpdateIn) => {
 
 export const deleteItem = (itemId: number) =>
   request<void>(`/shopping/items/${itemId}`, { method: "DELETE" });
+
+export const searchAll = (q: string, limit = 1) =>
+  request<SearchRawResponse>(`/search/all?q=${encodeURIComponent(q)}&limit=${limit}`);

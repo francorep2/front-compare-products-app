@@ -27,7 +27,7 @@ export default function SearchScreen() {
           contentContainerStyle={{ padding: spacing.md, paddingBottom: insets.bottom + 120 }}
         >
           {/* Título */}
-          <Text style={{ fontSize: 20, fontWeight: "800", color: colors.secondary, marginBottom: spacing.sm }}>
+          <Text style={{ fontSize: 30, fontWeight: "800", color: colors.secondary, marginBottom: spacing.sm }}>
             ¿Qué producto estás buscando?
           </Text>
 
@@ -69,11 +69,14 @@ export default function SearchScreen() {
               paddingVertical: spacing.md,
             }}
           >
-            <MaterialCommunityIcons name="barcode-scan" size={22} color={colors.secondary} />
-            <Text style={{ color: colors.secondary, fontWeight: "700" }}>
+            <MaterialCommunityIcons name="barcode-scan" size={22} color={colors.tertiary} />
+            <Text style={{ color: colors.tertiary, fontWeight: "700" }}>
               Escaneá el código de barras
             </Text>
           </Pressable>
+          
+          <View style={{ height: 1, backgroundColor: "#E9EEF5", opacity: 0.7, marginBottom: spacing.md }} />
+          
 
           {/* (Por ahora sin resultados) */}
         </ScrollView>

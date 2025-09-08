@@ -122,3 +122,22 @@ export type ShoppingItemUpdateIn = {
   done?: boolean | null;
 };
 
+// --- SEARCH ---
+export type StoreRawItem = {
+  title: string;   
+  price: string;    
+  url: string;   
+  image_url?: string;
+  barcode? : string; 
+};
+
+export type SearchRawResponse = Record<string, StoreRawItem[]>;
+
+export type SearchHit = {
+  store: string;     
+  name: string;     
+  price: number;     
+  url: string;
+  image_url?: string;
+  barcode?: string;
+};
