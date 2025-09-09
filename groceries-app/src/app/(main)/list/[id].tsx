@@ -619,7 +619,7 @@ const iconForStore = (store: string) => COMPANY_ICONS[normalizeKey(store)] ?? nu
                         {h.name}
                       </Text>
                       <Text style={{ color: colors.gray600, marginTop: 2 }}>{h.store}</Text>
-                     /*<Text style={{ color: colors.gray600, marginTop: 2 }} {h.barcode}></Text>*/
+                      <Text style={{ color: colors.gray600, marginTop: 2 }}>{h.barcode}</Text>
                     </View>
 
                     {/* precio */}
