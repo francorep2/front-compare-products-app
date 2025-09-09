@@ -1,10 +1,12 @@
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import { useHeaderHeight } from "@react-navigation/elements";
+import { useLocalSearchParams, useRouter } from "expo-router"; // 👈 importar router & params
 import { useEffect, useState } from "react";
 import {
   ActivityIndicator,
   Image,
   KeyboardAvoidingView,
+  Linking,
   Platform,
   Pressable,
   ScrollView,
@@ -12,18 +14,18 @@ import {
   View,
 } from "react-native";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
+import { mapSearchResponse, useDebouncedValue } from "../../../utils/search";
 import { searchAll } from "../../api/endpoints";
 import { SearchHit, SearchRawResponse } from "../../api/types";
 import { Text } from "../../components/ui/Text";
 import { useTheme } from "../../providers/theme";
 
-
-import { mapSearchResponse, useDebouncedValue } from "../../../utils/search";
-
 export default function SearchScreen() {
   const { colors, spacing, radii } = useTheme();
   const insets = useSafeAreaInsets();
   const headerH = useHeaderHeight();
+  const router = useRouter(); // 👈
+  const params = useLocalSearchParams<{ scanned?: string }>(); // 👈
 
   const [q, setQ] = useState("");
   const dq = useDebouncedValue(q, 420);
@@ -32,9 +34,15 @@ export default function SearchScreen() {
   const [err, setErr] = useState<string | null>(null);
   const [results, setResults] = useState<SearchHit[]>([]);
 
+  // Si volvemos del scanner con ?scanned=..., cargamos el input y disparamos la búsqueda
+  useEffect(() => {
+    const s = (params?.scanned ?? "").toString();
+    if (s) setQ(s);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [params?.scanned]);
+
   useEffect(() => {
     let cancelled = false;
-
     async function run() {
       setErr(null);
       if (!dq || dq.trim().length < 2) {
@@ -43,9 +51,8 @@ export default function SearchScreen() {
       }
       setLoading(true);
       try {
-        const data = await searchAll(dq, 3)// ✅ usa endpoints.ts
-        // data: SearchRawResponse
-        const mapped = mapSearchResponse(data as SearchRawResponse); // → SearchHit[]
+        const data = await searchAll(dq, 3);
+        const mapped = mapSearchResponse(data as SearchRawResponse);
         if (!cancelled) setResults(mapped);
       } catch (e: any) {
         if (!cancelled) {
@@ -56,12 +63,20 @@ export default function SearchScreen() {
         if (!cancelled) setLoading(false);
       }
     }
-
     run();
     return () => { cancelled = true; };
   }, [dq]);
 
   const clear = () => setQ("");
+
+  const openProduct = async (url?: string) => {
+    if (!url) return;
+    try {
+      const ok = await Linking.canOpenURL(url);
+      if (ok) await Linking.openURL(url);
+      else await Linking.openURL(url);
+    } catch {}
+  };
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: colors.white }} edges={["top", "bottom"]}>
@@ -74,7 +89,6 @@ export default function SearchScreen() {
           keyboardShouldPersistTaps="handled"
           contentContainerStyle={{ padding: spacing.md, paddingBottom: insets.bottom + 120 }}
         >
-          {/* Título */}
           <Text style={{ fontSize: 30, fontWeight: "800", color: colors.secondary, marginBottom: spacing.sm }}>
             ¿Qué producto estás buscando?
           </Text>
@@ -107,9 +121,9 @@ export default function SearchScreen() {
             ) : null}
           </View>
 
-          {/* Escanear */}
+          {/* Escanear: este botón/ícono abre el scanner */}
           <Pressable
-            onPress={() => {/* TODO: navegar al scanner */}}
+            onPress={() => router.push("/(main)/scanner")} // 👈 navegar al scanner
             style={{ flexDirection: "row", alignItems: "center", gap: 10, paddingVertical: spacing.md }}
           >
             <MaterialCommunityIcons name="barcode-scan" size={22} color={colors.tertiary} />
@@ -147,11 +161,13 @@ export default function SearchScreen() {
             </Text>
           )}
 
-          {/* Resultados (debajo del escáner) */}
+          {/* Resultados */}
           <View style={{ gap: 10 }}>
             {results.map((h, i) => (
-              <View
+              <Pressable
                 key={`${h.store}-${h.url}-${i}`}
+                onPress={() => openProduct(h.url)}  // 👈 link a la tienda
+                accessibilityRole="link"
                 style={{
                   flexDirection: "row",
                   alignItems: "center",
@@ -208,7 +224,7 @@ export default function SearchScreen() {
                     </Text>
                   )}
                 </View>
-              </View>
+              </Pressable>
             ))}
           </View>
         </ScrollView>
