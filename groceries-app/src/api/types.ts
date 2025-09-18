@@ -141,3 +141,22 @@ export type SearchHit = {
   image_url?: string;
   barcode?: string;
 };
+
+export type User = {
+  id: number;
+  email: string;
+  name: string;
+};
+
+export type AutoLoginResponse = {
+  user: User | null;
+  valid: boolean;
+};
+
+export type ScrapeSources = {
+  carrefour: boolean;
+  coto: boolean;
+  jumbo: boolean;
+  dia: boolean;
+};
+

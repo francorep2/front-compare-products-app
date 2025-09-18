@@ -66,7 +66,7 @@ export async function request<T>(path: string, init: RequestInit = {}): Promise<
     res = await fetch(url, { ...init, headers });
   } catch (netErr: any) {
     // Esto captura 'Network request failed'
-    console.error("❌ Network error:", netErr?.message || netErr);
+    console.error("❌ Error de Conexión:", netErr?.message || netErr);
     throw new Error("No se pudo conectar al servidor. Verificá IP/puerto/firewall.");
   }
 

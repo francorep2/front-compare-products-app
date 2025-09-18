@@ -1,7 +1,8 @@
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import { useHeaderHeight } from "@react-navigation/elements";
-import { useLocalSearchParams, useRouter } from "expo-router"; // 👈 importar router & params
-import { useEffect, useState } from "react";
+import { useFocusEffect } from "@react-navigation/native";
+import { useLocalSearchParams, useRouter } from "expo-router";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
   Image,
@@ -9,23 +10,31 @@ import {
   Linking,
   Platform,
   Pressable,
+  RefreshControl,
   ScrollView,
   TextInput,
   View,
 } from "react-native";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { mapSearchResponse, useDebouncedValue } from "../../../utils/search";
-import { searchAll } from "../../api/endpoints";
-import { SearchHit, SearchRawResponse } from "../../api/types";
+import {
+  getScrapeSources,
+  searchAll,
+  searchAllBarcode,
+  sourcesToEnabled,
+} from "../../api/endpoints";
+import { ScrapeSources, SearchHit, SearchRawResponse } from "../../api/types";
 import { Text } from "../../components/ui/Text";
 import { useTheme } from "../../providers/theme";
+
+const BARCODE_RE = /^(?:\d{7,14}|\d{18})$/; // EAN/GTIN típicos
 
 export default function SearchScreen() {
   const { colors, spacing, radii } = useTheme();
   const insets = useSafeAreaInsets();
   const headerH = useHeaderHeight();
-  const router = useRouter(); // 👈
-  const params = useLocalSearchParams<{ scanned?: string }>(); // 👈
+  const router = useRouter();
+  const params = useLocalSearchParams<{ scanned?: string }>();
 
   const [q, setQ] = useState("");
   const dq = useDebouncedValue(q, 420);
@@ -34,24 +43,78 @@ export default function SearchScreen() {
   const [err, setErr] = useState<string | null>(null);
   const [results, setResults] = useState<SearchHit[]>([]);
 
-  // Si volvemos del scanner con ?scanned=..., cargamos el input y disparamos la búsqueda
+  const [sources, setSources] = useState<ScrapeSources | null>(null);
+  const [loadingSources, setLoadingSources] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+
+  // cargar /search/config
+  const loadSources = useCallback(async () => {
+    setLoadingSources(true);
+    try {
+      const cfg = await getScrapeSources();
+      setSources(cfg);
+    } catch {
+      setSources({ carrefour: true, coto: true, jumbo: true, dia: true });
+    } finally {
+      setLoadingSources(false);
+    }
+  }, []);
+
+  // Montaje inicial
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      if (!cancelled) await loadSources();
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [loadSources]);
+
+  // Re-cargar al volver a enfocar
+  useFocusEffect(
+    useCallback(() => {
+      loadSources();
+    }, [loadSources])
+  );
+
+  // Pull-to-refresh
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    await loadSources();
+    setRefreshing(false);
+  }, [loadSources]);
+
+  // Derivar enabled[] desde sources
+  const enabled = useMemo(() => {
+    if (!sources) return [];
+    return sourcesToEnabled(sources);
+  }, [sources]);
+
+  // Si volvemos del scanner con ?scanned=...
   useEffect(() => {
     const s = (params?.scanned ?? "").toString();
     if (s) setQ(s);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [params?.scanned]);
 
+  // Buscar cuando cambie la query o la selección
   useEffect(() => {
     let cancelled = false;
     async function run() {
       setErr(null);
+      if (loadingSources || !sources) return;
+
       if (!dq || dq.trim().length < 2) {
         setResults([]);
         return;
       }
       setLoading(true);
       try {
-        const data = await searchAll(dq, 3);
+        const isBarcode = BARCODE_RE.test(dq.trim());
+        const data = isBarcode
+          ? await searchAllBarcode(dq.trim(), 3, enabled)
+          : await searchAll({ q: dq, limit: 3, enabled });
+
         const mapped = mapSearchResponse(data as SearchRawResponse);
         if (!cancelled) setResults(mapped);
       } catch (e: any) {
@@ -64,8 +127,10 @@ export default function SearchScreen() {
       }
     }
     run();
-    return () => { cancelled = true; };
-  }, [dq]);
+    return () => {
+      cancelled = true;
+    };
+  }, [dq, enabled, loadingSources, sources]);
 
   const clear = () => setQ("");
 
@@ -79,7 +144,10 @@ export default function SearchScreen() {
   };
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: colors.white }} edges={["top", "bottom"]}>
+    <SafeAreaView
+      style={{ flex: 1, backgroundColor: colors.white }}
+      edges={["top", "bottom"]}
+    >
       <KeyboardAvoidingView
         style={{ flex: 1 }}
         behavior={Platform.OS === "ios" ? "padding" : "height"}
@@ -87,9 +155,22 @@ export default function SearchScreen() {
       >
         <ScrollView
           keyboardShouldPersistTaps="handled"
-          contentContainerStyle={{ padding: spacing.md, paddingBottom: insets.bottom + 120 }}
+          contentContainerStyle={{
+            padding: spacing.md,
+            paddingBottom: insets.bottom + 120,
+          }}
+          refreshControl={
+            <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+          }
         >
-          <Text style={{ fontSize: 30, fontWeight: "800", color: colors.secondary, marginBottom: spacing.sm }}>
+          <Text
+            style={{
+              fontSize: 30,
+              fontWeight: "800",
+              color: colors.secondary,
+              marginBottom: spacing.sm,
+            }}
+          >
             ¿Qué producto estás buscando?
           </Text>
 
@@ -106,7 +187,12 @@ export default function SearchScreen() {
               alignItems: "center",
             }}
           >
-            <Ionicons name="search-outline" size={20} color={colors.secondary} style={{ marginRight: 8 }} />
+            <Ionicons
+              name="search-outline"
+              size={20}
+              color={colors.secondary}
+              style={{ marginRight: 8 }}
+            />
             <TextInput
               value={q}
               onChangeText={setQ}
@@ -115,31 +201,61 @@ export default function SearchScreen() {
               style={{ flex: 1, paddingVertical: 0, fontSize: 16 }}
             />
             {q ? (
-              <Pressable onPress={clear} hitSlop={10} accessibilityLabel="Limpiar búsqueda">
-                <Ionicons name="close-circle" size={18} color={colors.gray400} />
+              <Pressable
+                onPress={clear}
+                hitSlop={10}
+                accessibilityLabel="Limpiar búsqueda"
+              >
+                <Ionicons
+                  name="close-circle"
+                  size={18}
+                  color={colors.gray400}
+                />
               </Pressable>
             ) : null}
           </View>
 
-          {/* Escanear: este botón/ícono abre el scanner */}
+          {/* Escanear */}
           <Pressable
-            onPress={() => router.push("/(main)/scanner")} // 👈 navegar al scanner
-            style={{ flexDirection: "row", alignItems: "center", gap: 10, paddingVertical: spacing.md }}
+            onPress={() => router.push("/(main)/scanner")}
+            style={{
+              flexDirection: "row",
+              alignItems: "center",
+              gap: 10,
+              paddingVertical: spacing.md,
+            }}
           >
-            <MaterialCommunityIcons name="barcode-scan" size={22} color={colors.tertiary} />
+            <MaterialCommunityIcons
+              name="barcode-scan"
+              size={22}
+              color={colors.tertiary}
+            />
             <Text style={{ color: colors.tertiary, fontWeight: "700" }}>
               Escaneá el código de barras
             </Text>
           </Pressable>
 
-          <View style={{ height: 1, backgroundColor: "#E9EEF5", opacity: 0.7, marginBottom: spacing.md }} />
+          <View
+            style={{
+              height: 1,
+              backgroundColor: "#E9EEF5",
+              opacity: 0.7,
+              marginBottom: spacing.md,
+            }}
+          />
 
           {/* Estados */}
-          {loading && (
+          {(loadingSources || loading) && (
             <View style={{ paddingVertical: spacing.md, alignItems: "center" }}>
               <ActivityIndicator />
+              {loadingSources && (
+                <Text style={{ color: colors.gray500, marginTop: 6 }}>
+                  Cargando configuración de supermercados…
+                </Text>
+              )}
             </View>
           )}
+
           {err && (
             <View
               style={{
@@ -151,11 +267,14 @@ export default function SearchScreen() {
                 marginBottom: spacing.md,
               }}
             >
-              <Text style={{ color: colors.error, fontWeight: "700" }}>Ocurrió un error</Text>
+              <Text style={{ color: colors.error, fontWeight: "700" }}>
+                Ocurrió un error
+              </Text>
               <Text style={{ color: colors.secondary }}>{err}</Text>
             </View>
           )}
-          {!loading && !err && dq && results.length === 0 && (
+
+          {!loading && !loadingSources && !err && dq && results.length === 0 && (
             <Text style={{ color: colors.gray500 }}>
               No encontramos resultados para “{dq}”.
             </Text>
@@ -166,7 +285,7 @@ export default function SearchScreen() {
             {results.map((h, i) => (
               <Pressable
                 key={`${h.store}-${h.url}-${i}`}
-                onPress={() => openProduct(h.url)}  // 👈 link a la tienda
+                onPress={() => openProduct(h.url)}
                 accessibilityRole="link"
                 style={{
                   flexDirection: "row",
@@ -191,18 +310,37 @@ export default function SearchScreen() {
                   }}
                 >
                   {h.image_url ? (
-                    <Image source={{ uri: h.image_url }} style={{ width: "100%", height: "100%" }} />
+                    <Image
+                      source={{ uri: h.image_url }}
+                      style={{ width: "100%", height: "100%" }}
+                    />
                   ) : (
-                    <Ionicons name="image-outline" size={22} color={colors.gray400} />
+                    <Ionicons
+                      name="image-outline"
+                      size={22}
+                      color={colors.gray400}
+                    />
                   )}
                 </View>
 
                 <View style={{ flex: 1 }}>
-                  <Text numberOfLines={2} style={{ fontWeight: "700", color: colors.secondary }}>
+                  <Text
+                    numberOfLines={2}
+                    style={{ fontWeight: "700", color: colors.secondary }}
+                  >
                     {h.name}
                   </Text>
-                  <View style={{ flexDirection: "row", alignItems: "center", gap: 8, marginTop: 2 }}>
-                    <Text style={{ color: colors.primary, fontWeight: "900" }}>
+                  <View
+                    style={{
+                      flexDirection: "row",
+                      alignItems: "center",
+                      gap: 8,
+                      marginTop: 2,
+                    }}
+                  >
+                    <Text
+                      style={{ color: colors.primary, fontWeight: "900" }}
+                    >
                       ${Number(h.price ?? 0).toLocaleString("es-AR")}
                     </Text>
                     <View
@@ -215,11 +353,21 @@ export default function SearchScreen() {
                         borderColor: "#E9EEF5",
                       }}
                     >
-                      <Text style={{ fontSize: 12, color: colors.gray600 }}>{h.store}</Text>
+                      <Text
+                        style={{ fontSize: 12, color: colors.gray600 }}
+                      >
+                        {h.store}
+                      </Text>
                     </View>
                   </View>
                   {!!h.barcode && (
-                    <Text style={{ color: colors.gray500, fontSize: 12, marginTop: 2 }}>
+                    <Text
+                      style={{
+                        color: colors.gray500,
+                        fontSize: 12,
+                        marginTop: 2,
+                      }}
+                    >
                       EAN: {h.barcode}
                     </Text>
                   )}

@@ -13,7 +13,8 @@
     },
     "plugins": [
       "expo-router",
-      "expo-barcode-scanner"
+      "expo-barcode-scanner",
+      "expo-secure-store"
     ],
     "router": {
       "root": "src/app/pages"

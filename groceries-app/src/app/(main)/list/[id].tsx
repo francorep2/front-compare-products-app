@@ -3,7 +3,7 @@ import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import { useHeaderHeight } from "@react-navigation/elements";
 import { useFocusEffect } from "@react-navigation/native";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import React from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -23,6 +23,9 @@ import {
 } from "react-native";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 
+// 🚀 NUEVO: cámara para escanear
+import { CameraView, useCameraPermissions } from "expo-camera";
+
 import {
   addItem as apiAddItem,
   deleteItem as apiDeleteItem,
@@ -30,9 +33,11 @@ import {
   renameList as apiRenameList,
   updateItem as apiUpdateItem,
   getListDetail,
-  searchAll,
+  getScrapeSources,
+  searchAll, // se usa con { q } o con { barcode }
+  sourcesToEnabled,
 } from "../../../api/endpoints";
-import type { SearchHit, SearchRawResponse, ShoppingItemOut } from "../../../api/types";
+import type { ScrapeSources, SearchHit, SearchRawResponse, ShoppingItemOut } from "../../../api/types";
 import { Text } from "../../../components/ui/Text";
 import { useTheme } from "../../../providers/theme";
 
@@ -51,20 +56,22 @@ function parsePrice(raw?: string): number {
   if (!raw) return 0;
   let v = raw.replace(/[^\d.,]/g, "");
   if (v.includes(",") && v.includes(".")) {
-    // Ej: "1.234,56" -> "1234.56"
     v = v.replace(/\./g, "").replace(",", ".");
   } else if (v.includes(",") && !v.includes(".")) {
-    // Ej: "123,45" -> "123.45"
     v = v.replace(",", ".");
   }
   v = v.replace(/[^0-9.]/g, "");
   const n = parseFloat(v);
   return Number.isFinite(n) ? n : 0;
 }
+
 function flattenSearch(raw: SearchRawResponse): SearchHit[] {
+  const buckets: Record<string, any> = (raw as any)?.results ?? (raw as any) ?? {};
   const out: SearchHit[] = [];
-  for (const [store, arr] of Object.entries(raw || {})) {
-    for (const it of arr || []) {
+
+  for (const [store, arr] of Object.entries(buckets)) {
+    if (!Array.isArray(arr)) continue;
+    for (const it of arr) {
       out.push({
         store,
         name: it.title,
@@ -79,6 +86,9 @@ function flattenSearch(raw: SearchRawResponse): SearchHit[] {
   return out;
 }
 
+// 👉 helper para limpiar EAN/UPC
+const onlyDigits = (s: string | undefined | null) => (s || "").replace(/\D/g, "");
+
 export default function ListDetailScreen() {
   const { colors, spacing } = useTheme();
   const insets = useSafeAreaInsets();
@@ -86,25 +96,25 @@ export default function ListDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const headerH = useHeaderHeight();
 
-  const [listName, setListName] = React.useState<string>("Lista");
-  const [editingName, setEditingName] = React.useState(false);
-  const [createdAt, setCreatedAt] = React.useState<string | undefined>(undefined);
-  const [rows, setRows] = React.useState<Row[]>([]);
-  const [loading, setLoading] = React.useState(true);
-  const [refreshing, setRefreshing] = React.useState(false);
-  const [error, setError] = React.useState<string | null>(null);
+  const [listName, setListName] = useState<string>("Lista");
+  const [editingName, setEditingName] = useState(false);
+  const [createdAt, setCreatedAt] = useState<string | undefined>(undefined);
+  const [rows, setRows] = useState<Row[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   // Sheet state
-  const [sheetVisible, setSheetVisible] = React.useState(false);
-  const [sheetLoading, setSheetLoading] = React.useState(false);
-  const [sheetErr, setSheetErr] = React.useState<string | null>(null);
-  const [hits, setHits] = React.useState<SearchHit[]>([]);
+  const [sheetVisible, setSheetVisible] = useState(false);
+  const [sheetLoading, setSheetLoading] = useState(false);
+  const [sheetErr, setSheetErr] = useState<string | null>(null);
+  const [hits, setHits] = useState<SearchHit[]>([]);
 
   // Animations
   const sheetY = React.useRef(new Animated.Value(1)).current; // 1 => hidden, 0 => shown
   const backdrop = React.useRef(new Animated.Value(0)).current;
 
-  // assets por tienda
+  // Assets por tienda
   const COMPANY_ICONS: Record<string, any> = {
     coto: require("../../../../assets/company/coto.png"),
     dia: require("../../../../assets/company/dia.png"),
@@ -115,11 +125,49 @@ export default function ListDetailScreen() {
   const iconForStore = (store: string) => COMPANY_ICONS[normalizeKey(store)] ?? null;
 
   // 👉 estados para agregar nuevo ítem
-  const [newNombre, setNewNombre] = React.useState("");
-  const [newCantidad, setNewCantidad] = React.useState("");
-  const [adding, setAdding] = React.useState(false);
+  const [newNombre, setNewNombre] = useState("");
+  const [newCantidad, setNewCantidad] = useState("");
+  const [adding, setAdding] = useState(false);
 
   const listId = Number(id);
+
+  // ---- Selección de supermercados (desde /search/config) ----
+  const [sources, setSources] = useState<ScrapeSources | null>(null);
+  const [loadingSources, setLoadingSources] = useState(true);
+
+  const loadSources = useCallback(async () => {
+    setLoadingSources(true);
+    try {
+      const cfg = await getScrapeSources(); // { carrefour, coto, jumbo, dia }
+      setSources(cfg);
+    } catch {
+      setSources({ carrefour: true, coto: true, jumbo: true, dia: true });
+    } finally {
+      setLoadingSources(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      if (!cancelled) await loadSources();
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [loadSources]);
+
+  useFocusEffect(
+    useCallback(() => {
+      // refrescar selección al volver de config
+      loadSources();
+    }, [loadSources])
+  );
+
+  const enabled = useMemo(() => {
+    if (!sources) return [];
+    return sourcesToEnabled(sources);
+  }, [sources]);
 
   const load = async () => {
     if (!listId) return;
@@ -156,7 +204,7 @@ export default function ListDetailScreen() {
     load();
   };
 
-  // cargar mejores precios (máximo 10) y abrir sheet
+  // --------- Lógica de mejores precios por NOMBRE (ya existente) ----------
   const loadBestPricesAndOpen = async (query: string) => {
     const q = query.trim();
     if (!q) return;
@@ -183,8 +231,56 @@ export default function ListDetailScreen() {
     ]).start();
 
     try {
-      const data = await searchAll(q, 10);
-      const ordered = flattenSearch(data).slice(0, 10);
+      if (loadingSources || !sources) {
+        await loadSources();
+      }
+      const enabledNow = sourcesToEnabled(sources || { carrefour: true, coto: true, jumbo: true, dia: true });
+
+      const data = await searchAll({ q, limit: 2, enabled: enabledNow });
+      const ordered = flattenSearch(data as SearchRawResponse).slice(0, 10);
+      setHits(ordered);
+    } catch (e: any) {
+      setSheetErr(e?.data?.detail || e?.message || "No se pudieron obtener precios.");
+    } finally {
+      setSheetLoading(false);
+    }
+  };
+
+  // --------- 🚀 NUEVO: mejores precios por BARCODE ----------
+  const loadBestPricesByBarcodeAndOpen = async (barcode: string) => {
+    const ean = onlyDigits(barcode);
+    if (!ean) return;
+
+    setSheetErr(null);
+    setHits([]);
+    setSheetLoading(true);
+    setSheetVisible(true);
+
+    // animate in
+    Animated.parallel([
+      Animated.timing(sheetY, {
+        toValue: 0,
+        duration: 260,
+        easing: Easing.out(Easing.cubic),
+        useNativeDriver: true,
+      }),
+      Animated.timing(backdrop, {
+        toValue: 1,
+        duration: 180,
+        easing: Easing.out(Easing.cubic),
+        useNativeDriver: true,
+      }),
+    ]).start();
+
+    try {
+      if (loadingSources || !sources) {
+        await loadSources();
+      }
+      const enabledNow = sourcesToEnabled(sources || { carrefour: true, coto: true, jumbo: true, dia: true });
+
+      // 👇 mismo endpoint, pero con { barcode }
+      const data = await searchAll({ barcode: ean, limit: 2, enabled: enabledNow });
+      const ordered = flattenSearch(data as SearchRawResponse).slice(0, 10);
       setHits(ordered);
     } catch (e: any) {
       setSheetErr(e?.data?.detail || e?.message || "No se pudieron obtener precios.");
@@ -194,7 +290,6 @@ export default function ListDetailScreen() {
   };
 
   const hideSheet = React.useCallback(() => {
-    // animate out
     Animated.parallel([
       Animated.timing(sheetY, {
         toValue: 1,
@@ -324,6 +419,46 @@ export default function ListDetailScreen() {
     ]);
   };
 
+  // ------------------ 🚀 NUEVO: Escáner por fila ------------------
+  const [scannerVisible, setScannerVisible] = useState(false);
+  const [scanningRowIdx, setScanningRowIdx] = useState<number | null>(null);
+  const [permission, requestPermission] = useCameraPermissions();
+  const [hasScanned, setHasScanned] = useState(false); // evita doble trigger
+
+  const startScanForRow = async (idx: number) => {
+    setScanningRowIdx(idx);
+    if (!permission?.granted) {
+      const { granted } = await requestPermission();
+      if (!granted) {
+        Alert.alert("Permiso requerido", "Necesitamos acceso a la cámara para escanear el código.");
+        return;
+      }
+    }
+    setHasScanned(false);
+    setScannerVisible(true);
+  };
+
+  const onBarcodeDetected = async ({ data }: { data: string; raw?: any; type?: string }) => {
+    if (hasScanned) return;
+    const ean = onlyDigits(data);
+    if (!ean) return;
+
+    setHasScanned(true);
+    setScannerVisible(false);
+
+    // 🔎 buscar por barcode y abrir sheet con resultados
+    await loadBestPricesByBarcodeAndOpen(ean);
+
+    // (opcional) si querés, autocompletar el nombre de la fila con el primer hit
+    // try {
+    //   if (hits.length > 0 && scanningRowIdx != null) {
+    //     const first = hits[0];
+    //     setRow(scanningRowIdx, { _nombre: first.name ?? rows[scanningRowIdx].nombre });
+    //   }
+    // } catch {}
+    setScanningRowIdx(null);
+  };
+
   // agregar ítem a la lista existente
   const addNewItem = async () => {
     if (adding) return;
@@ -335,7 +470,7 @@ export default function ListDetailScreen() {
     }
     try {
       setAdding(true);
-      const maybeCreated = await apiAddItem(listId, { nombre, cantidad }) as any;
+      const maybeCreated = (await apiAddItem(listId, { nombre, cantidad })) as any;
       if (maybeCreated && typeof maybeCreated === "object") {
         const created = maybeCreated as ShoppingItemOut;
         setRows((prev) => [
@@ -415,7 +550,7 @@ export default function ListDetailScreen() {
       {/* Guardando… */}
       {item._saving ? <ActivityIndicator /> : null}
 
-      {/* Carrito */}
+      {/* Carrito (por nombre) */}
       <Pressable
         onPress={() => onCartPress(item._nombre || item.nombre)}
         hitSlop={10}
@@ -430,15 +565,11 @@ export default function ListDetailScreen() {
         <Ionicons name="trash-outline" size={20} color={item._deleting ? colors.gray400 : (colors.tertiary ?? "#ef4444")} />
       </Pressable>
 
-      <Pressable onPress={() =>(index)} hitSlop={10} disabled={item._deleting}>
+      {/* 📷 Escáner por fila (por barcode) */}
+      <Pressable onPress={() => startScanForRow(index)} hitSlop={10} disabled={item._deleting}>
         <MaterialCommunityIcons name="barcode-scan" size={22} color={colors.tertiary} />
       </Pressable>
-
     </View>
-
-  
-
-
   );
 
   // Animated transforms
@@ -505,7 +636,6 @@ export default function ListDetailScreen() {
                       <Ionicons name="trash-outline" size={20} color={colors.tertiary ?? "#ef4444"} />
                     </Pressable>
                   </View>
-
 
                   {!!createdAt && (
                     <Text style={{ color: colors.gray600, marginTop: 4, fontSize: 12 }}>
@@ -594,127 +724,216 @@ export default function ListDetailScreen() {
         )}
       </KeyboardAvoidingView>
 
-      {/* Bottom Sheet: mejores precios (10 resultados, media pantalla, scroll interno, imagen de producto y link) */}
-<Modal visible={sheetVisible} transparent animationType="none" onRequestClose={hideSheet}>
-  {/* Backdrop */}
-  <Animated.View
-    style={{
-      flex: 1,
-      backgroundColor: "rgba(0,0,0,0.25)",
-      opacity: backdrop, // fade in/out
-    }}
-  >
-    <Pressable style={{ flex: 1 }} onPress={hideSheet} />
-  </Animated.View>
+      {/* Bottom Sheet: mejores precios */}
+      <Modal visible={sheetVisible} transparent animationType="none" onRequestClose={hideSheet}>
+        {/* Backdrop */}
+        <Animated.View
+          style={{
+            flex: 1,
+            backgroundColor: "rgba(0,0,0,0.25)",
+            opacity: backdrop,
+          }}
+        >
+          <Pressable style={{ flex: 1 }} onPress={hideSheet} />
+        </Animated.View>
 
-  {/* Sheet */}
-  <Animated.View
-    style={{
-      position: "absolute",
-      left: 0,
-      right: 0,
-      bottom: 0,
-      transform: [{ translateY }], // slide up/down
-    }}
-  >
-    <View
-      style={{
-        backgroundColor: "#fff",
-        borderTopLeftRadius: 16,
-        borderTopRightRadius: 16,
-        padding: 16,
-        height: SHEET_HEIGHT, // media pantalla
-        shadowColor: "#000",
-        shadowOpacity: 0.1,
-        shadowRadius: 10,
-        elevation: 8,
-        gap: 10,
-      }}
-    >
-      {/* header */}
-      <View style={{ flexDirection: "row", alignItems: "center" }}>
-        <Text style={{ flex: 1, fontSize: 16, fontWeight: "800", color: colors.tertiary }}>
-          Mejores resultados
-        </Text>
-        <Pressable onPress={hideSheet} hitSlop={8}>
-          <Ionicons name="close" size={20} color={colors.gray600} />
-        </Pressable>
-      </View>
+        {/* Sheet */}
+        <Animated.View
+          style={{
+            position: "absolute",
+            left: 0,
+            right: 0,
+            bottom: 0,
+            transform: [{ translateY }],
+          }}
+        >
+          <View
+            style={{
+              backgroundColor: "#fff",
+              borderTopLeftRadius: 16,
+              borderTopRightRadius: 16,
+              padding: 16,
+              height: SHEET_HEIGHT,
+              shadowColor: "#000",
+              shadowOpacity: 0.1,
+              shadowRadius: 10,
+              elevation: 8,
+              gap: 10,
+            }}
+          >
+            {/* header */}
+            <View style={{ flexDirection: "row", alignItems: "center" }}>
+              <Text style={{ flex: 1, fontSize: 16, fontWeight: "800", color: colors.tertiary }}>
+                Mejores resultados
+              </Text>
+              <Pressable onPress={hideSheet} hitSlop={8}>
+                <Ionicons name="close" size={20} color={colors.gray600} />
+              </Pressable>
+            </View>
 
-      {/* resultados */}
-      {sheetLoading ? (
-        <View style={{ flex: 1, alignItems: "center", justifyContent: "center" }}>
-          <ActivityIndicator />
-        </View>
-      ) : sheetErr ? (
-        <Text style={{ color: colors.error }}>{sheetErr}</Text>
-      ) : hits.length === 0 ? (
-        <Text style={{ color: colors.gray600 }}>Sin resultados.</Text>
-      ) : (
-        <FlatList
-          data={hits} // hasta 10
-          keyExtractor={(h, i) => `${h.store}-${h.url}-${i}`}
-          contentContainerStyle={{ paddingBottom: 4, gap: 10 }}
-          showsVerticalScrollIndicator
-          renderItem={({ item: h }) => (
+            {/* resultados */}
+            {sheetLoading ? (
+              <View style={{ flex: 1, alignItems: "center", justifyContent: "center" }}>
+                <ActivityIndicator />
+              </View>
+            ) : sheetErr ? (
+              <Text style={{ color: colors.error }}>{sheetErr}</Text>
+            ) : hits.length === 0 ? (
+              <Text style={{ color: colors.gray600 }}>Sin resultados.</Text>
+            ) : (
+              <FlatList
+                data={hits}
+                keyExtractor={(h, i) => `${h.store}-${h.url}-${i}`}
+                contentContainerStyle={{ paddingBottom: 4, gap: 10 }}
+                showsVerticalScrollIndicator
+                renderItem={({ item: h }) => (
+                  <Pressable
+                    onPress={() => Linking.openURL(h.url)}
+                    style={{
+                      backgroundColor: "#FAFBFC",
+                      borderWidth: 1,
+                      borderColor: "#E9EEF5",
+                      borderRadius: 12,
+                      padding: 10,
+                      flexDirection: "row",
+                      alignItems: "center",
+                      gap: 12,
+                    }}
+                  >
+                    {h.image_url ? (
+                      <Image
+                        source={{ uri: h.image_url }}
+                        style={{ width: 64, height: 64, borderRadius: 8, resizeMode: "contain" }}
+                      />
+                    ) : (
+                      <View
+                        style={{
+                          width: 64,
+                          height: 64,
+                          borderRadius: 8,
+                          backgroundColor: "#EFEFF2",
+                          alignItems: "center",
+                          justifyContent: "center",
+                        }}
+                      >
+                        <Ionicons name="image-outline" size={24} color={colors.gray500} />
+                      </View>
+                    )}
+
+                    <View style={{ flex: 1 }}>
+                      <Text numberOfLines={1} style={{ fontWeight: "700", color: colors.secondary, fontSize: 14 }}>
+                        {h.name}
+                      </Text>
+                      <Text style={{ color: colors.gray600, marginTop: 2, fontSize: 14 }}>
+                        {h.store.toLocaleUpperCase()}
+                      </Text>
+                      {!!h.barcode && (
+                        <Text style={{ color: colors.gray600, marginTop: 2, fontSize: 12 }}>
+                          EAN: {h.barcode}
+                        </Text>
+                      )}
+                    </View>
+
+                    <Text style={{ fontSize: 18, fontWeight: "900", color: colors.primary }}>
+                      ${Number(h.price ?? 0).toLocaleString("es-AR")}
+                    </Text>
+                  </Pressable>
+                )}
+              />
+            )}
+          </View>
+        </Animated.View>
+      </Modal>
+
+      {/* 📱 Modal del ESCÁNER */}
+      <Modal
+        visible={scannerVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => {
+          setScannerVisible(false);
+          setScanningRowIdx(null);
+        }}
+      >
+        <View style={{ flex: 1, backgroundColor: "black" }}>
+          {/* Cámara en pantalla completa */}
+          {permission?.granted ? (
+            <CameraView
+              style={{ flex: 1 }}
+              facing="back"
+              onBarcodeScanned={(ev: any) => {
+                // ev: { data, type, cornerPoints, ... }
+                onBarcodeDetected({ data: ev?.data, type: ev?.type });
+              }}
+              barcodeScannerSettings={{
+                barcodeTypes: [
+                  "ean13",
+                  "ean8",
+                  "upc_a",
+                  "upc_e",
+                  "code128",
+                  "itf14",
+                  "code39",
+                  "codabar",
+                ],
+              }}
+            />
+          ) : (
+            <View style={{ flex: 1, alignItems: "center", justifyContent: "center" }}>
+              <ActivityIndicator color="#fff" />
+              <Text style={{ color: "#fff", marginTop: 8 }}>Solicitando permiso de cámara…</Text>
+            </View>
+          )}
+
+          {/* Overlay y controles */}
+          <View
+            style={{
+              position: "absolute",
+              left: 0,
+              right: 0,
+              top: 0,
+              paddingTop: insets.top + 12,
+              paddingHorizontal: 12,
+              flexDirection: "row",
+              justifyContent: "space-between",
+              alignItems: "center",
+            }}
+          >
             <Pressable
-              onPress={() => Linking.openURL(h.url)}
+              onPress={() => {
+                setScannerVisible(false);
+                setScanningRowIdx(null);
+              }}
               style={{
-                backgroundColor: "#FAFBFC",
-                borderWidth: 1,
-                borderColor: "#E9EEF5",
-                borderRadius: 12,
-                padding: 10,
-                flexDirection: "row",
-                alignItems: "center",
-                gap: 12,
+                backgroundColor: "rgba(0,0,0,0.5)",
+                paddingHorizontal: 12,
+                paddingVertical: 8,
+                borderRadius: 999,
               }}
             >
-              {/* imagen del producto (no más logo de súper) */}
-              {h.image_url ? (
-                <Image
-                  source={{ uri: h.image_url }}
-                  style={{ width: 64, height: 64, borderRadius: 8, resizeMode: "contain" }}
-                />
-              ) : (
-                <View
-                  style={{
-                    width: 64,
-                    height: 64,
-                    borderRadius: 8,
-                    backgroundColor: "#EFEFF2",
-                    alignItems: "center",
-                    justifyContent: "center",
-                  }}
-                >
-                  <Ionicons name="image-outline" size={24} color={colors.gray500} />
-                </View>
-              )}
-
-              {/* info */}
-              <View style={{ flex: 1 }}>
-                <Text numberOfLines={1} style={{ fontWeight: "700", color: colors.secondary, fontSize: 14 }}>
-                  {h.name}
-                </Text>
-                <Text style={{ color: colors.gray600, marginTop: 2 , fontSize : 14}}>{h.store.toLocaleUpperCase()}</Text>
-                {!!h.barcode && (
-                  <Text style={{ color: colors.gray600, marginTop: 2, fontSize: 12 }}>
-                    EAN: {h.barcode}
-                  </Text>
-                )}
-              </View>
-
-              {/* precio */}
-              <Text style={{ fontSize: 18, fontWeight: "900", color: colors.primary }}>
-                ${Number(h.price ?? 0).toLocaleString("es-AR")}
-              </Text>
+              <Ionicons name="close" size={22} color="#fff" />
             </Pressable>
-          )}
-        />
-      )}
-    </View>
-  </Animated.View>
-</Modal>
+
+            <View style={{ backgroundColor: "rgba(0,0,0,0.5)", paddingHorizontal: 10, paddingVertical: 6, borderRadius: 999 }}>
+              <Text style={{ color: "#fff", fontWeight: "700" }}>Apuntá al código de barras</Text>
+            </View>
+          </View>
+
+          {/* Marco guía simple */}
+          <View
+            style={{
+              position: "absolute",
+              left: 24,
+              right: 24,
+              top: "35%",
+              height: 180,
+              borderWidth: 2,
+              borderColor: "rgba(255,255,255,0.9)",
+              borderRadius: 12,
+            }}
+          />
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
