@@ -282,7 +282,9 @@ export default function SearchScreen() {
 
           {/* Resultados */}
           <View style={{ gap: 10 }}>
-            {results.map((h, i) => (
+            {results
+            .filter((h) => !!h.name && !!h.url) 
+            .map((h, i) => (
               <Pressable
                 key={`${h.store}-${h.url}-${i}`}
                 onPress={() => openProduct(h.url)}
@@ -336,13 +338,35 @@ export default function SearchScreen() {
                       alignItems: "center",
                       gap: 8,
                       marginTop: 2,
+                      flexWrap: "wrap",
                     }}
                   >
-                    <Text
-                      style={{ color: colors.primary, fontWeight: "900" }}
-                    >
+                    <Text style={{ color: colors.primary, fontWeight: "900" }}>
                       ${Number(h.price ?? 0).toLocaleString("es-AR")}
                     </Text>
+
+                  {(h.promotion?.trim()?.length ?? 0) > 0 ? (
+                    <View
+                      style={{
+                        paddingHorizontal: 8,
+                        paddingVertical: 2,
+                        borderRadius: 999,
+                        backgroundColor: "#FFDD61", // Advertencia
+                      }}
+                    >
+                      <Text
+                        style={{
+                          fontSize: 11,
+                          fontWeight: "800",
+                          color: "#4A5899", // Terciario
+                        }}
+                        numberOfLines={1}
+                      >
+                        {h.promotion!.trim()}
+                      </Text>
+                    </View>
+                  ) : null}
+                    {/* Store chip */}
                     <View
                       style={{
                         paddingHorizontal: 8,
@@ -353,13 +377,12 @@ export default function SearchScreen() {
                         borderColor: "#E9EEF5",
                       }}
                     >
-                      <Text
-                        style={{ fontSize: 12, color: colors.gray600 }}
-                      >
+                      <Text style={{ fontSize: 12, color: colors.gray600 }}>
                         {h.store}
                       </Text>
                     </View>
                   </View>
+
                   {!!h.barcode && (
                     <Text
                       style={{

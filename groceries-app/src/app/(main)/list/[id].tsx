@@ -65,6 +65,7 @@ function parsePrice(raw?: string): number {
   return Number.isFinite(n) ? n : 0;
 }
 
+// ⬇️ Actualizado: incluye promotion y descarta ítems sin title/url
 function flattenSearch(raw: SearchRawResponse): SearchHit[] {
   const buckets: Record<string, any> = (raw as any)?.results ?? (raw as any) ?? {};
   const out: SearchHit[] = [];
@@ -72,6 +73,9 @@ function flattenSearch(raw: SearchRawResponse): SearchHit[] {
   for (const [store, arr] of Object.entries(buckets)) {
     if (!Array.isArray(arr)) continue;
     for (const it of arr) {
+      // Filtro temprano: si no hay título o url, no lo agregamos
+      if (!it?.title || !it?.url) continue;
+
       out.push({
         store,
         name: it.title,
@@ -79,7 +83,8 @@ function flattenSearch(raw: SearchRawResponse): SearchHit[] {
         url: it.url,
         image_url: it.image_url,
         barcode: it.barcode,
-      });
+        promotion: it.promotion ?? null, // 👈 NUEVO
+      } as SearchHit);
     }
   }
   out.sort((a, b) => a.price - b.price);
@@ -419,7 +424,6 @@ export default function ListDetailScreen() {
     ]);
   };
 
-  // ------------------ 🚀 NUEVO: Escáner por fila ------------------
   const [scannerVisible, setScannerVisible] = useState(false);
   const [scanningRowIdx, setScanningRowIdx] = useState<number | null>(null);
   const [permission, requestPermission] = useCameraPermissions();
@@ -449,13 +453,12 @@ export default function ListDetailScreen() {
     // 🔎 buscar por barcode y abrir sheet con resultados
     await loadBestPricesByBarcodeAndOpen(ean);
 
-    // (opcional) si querés, autocompletar el nombre de la fila con el primer hit
-    // try {
-    //   if (hits.length > 0 && scanningRowIdx != null) {
-    //     const first = hits[0];
-    //     setRow(scanningRowIdx, { _nombre: first.name ?? rows[scanningRowIdx].nombre });
-    //   }
-    // } catch {}
+    try {
+     if (hits.length > 0 && scanningRowIdx != null) {
+         const first = hits[0];
+         setRow(scanningRowIdx, { _nombre: first.name ?? rows[scanningRowIdx].nombre });
+       }
+     } catch {}
     setScanningRowIdx(null);
   };
 
@@ -778,17 +781,16 @@ export default function ListDetailScreen() {
               </View>
             ) : sheetErr ? (
               <Text style={{ color: colors.error }}>{sheetErr}</Text>
-            ) : hits.length === 0 ? (
-              <Text style={{ color: colors.gray600 }}>Sin resultados.</Text>
             ) : (
               <FlatList
-                data={hits}
+                // ⬇️ Filtro: solo con name y url
+                data={hits.filter((h) => !!h.name && !!h.url)}
                 keyExtractor={(h, i) => `${h.store}-${h.url}-${i}`}
                 contentContainerStyle={{ paddingBottom: 4, gap: 10 }}
                 showsVerticalScrollIndicator
                 renderItem={({ item: h }) => (
                   <Pressable
-                    onPress={() => Linking.openURL(h.url)}
+                    onPress={() => Linking.openURL(h.url!)}
                     style={{
                       backgroundColor: "#FAFBFC",
                       borderWidth: 1,
@@ -834,11 +836,33 @@ export default function ListDetailScreen() {
                       )}
                     </View>
 
-                    <Text style={{ fontSize: 18, fontWeight: "900", color: colors.primary }}>
-                      ${Number(h.price ?? 0).toLocaleString("es-AR")}
-                    </Text>
+                    {/* Precio + PROMO badge */}
+                    <View style={{ alignItems: "flex-end", gap: 6 }}>
+                      <Text style={{ fontSize: 18, fontWeight: "900", color: colors.primary }}>
+                        ${Number(h.price ?? 0).toLocaleString("es-AR")}
+                      </Text>
+
+                      {h.promotion ? (
+                        <View
+                          style={{
+                            paddingHorizontal: 8,
+                            paddingVertical: 2,
+                            borderRadius: 999,
+                            backgroundColor: "#FFDD61", // Advertencia
+                          }}
+                        >
+                          <Text
+                            numberOfLines={1}
+                            style={{ fontSize: 11, fontWeight: "800", color: "#4A5899" /* Terciario */ }}
+                          >
+                            {h.promotion}
+                          </Text>
+                        </View>
+                      ) : null}
+                    </View>
                   </Pressable>
                 )}
+                ListEmptyComponent={<Text style={{ color: colors.gray600 }}>Sin resultados.</Text>}
               />
             )}
           </View>

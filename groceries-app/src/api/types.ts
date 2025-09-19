@@ -40,18 +40,22 @@ export interface ShoppingListDetail {
   items: ShoppingItemOut[];
 }
 
-// --- SEARCH ---
+// --- SEARCH (modelo crudo que puede usar otras partes del front) ---
 export interface SearchItem {
   title?: string | null;
-  price?: string | null;
+  price?: string | null;       // "ARS 1234.00"
   url?: string | null;
   image_url?: string | null;
   barcode?: string | null;
+  promotion?: string | null;   // 👈 AGREGADO
 }
+
 export interface SearchResponse {
   source: string;
   items: SearchItem[];
 }
+
+// --- REGISTER / RESET ---
 export type RegisterStartIn = {
   first_name: string;
   last_name: string;
@@ -70,32 +74,32 @@ export type RegisterVerifyIn = {
   code: string;
 };
 
-export type RegisterResendOut = { 
-  challenge_id: string; 
-  message: string 
+export type RegisterResendOut = {
+  challenge_id: string;
+  message: string;
 };
 
-export type PasswordResetStartIn = { 
-  email: string 
+export type PasswordResetStartIn = {
+  email: string;
 };
-export type PasswordResetVerifyIn = { 
+export type PasswordResetVerifyIn = {
   challenge_id: string;
-  code: string 
+  code: string;
 };
-export type ResetTokenOut = { 
-  reset_token: string 
+export type ResetTokenOut = {
+  reset_token: string;
 };
-export type PasswordResetConfirmIn = { 
-  reset_token: string; 
-  new_password: string 
+export type PasswordResetConfirmIn = {
+  reset_token: string;
+  new_password: string;
 };
-export type PasswordResetResendOut = { 
+export type PasswordResetResendOut = {
   challenge_id: string;
-  message: string 
+  message: string;
 };
-export type PasswordResetStartOut = { 
+export type PasswordResetStartOut = {
   challenge_id?: string;
-  message: string 
+  message: string;
 };
 
 export type UpdateMeIn = Partial<{
@@ -104,44 +108,48 @@ export type UpdateMeIn = Partial<{
   first_name: string;
   last_name: string;
 }>;
-export type ShoppingListCreateIn = { 
-  nombre: string 
+
+export type ShoppingListCreateIn = {
+  nombre: string
 };
 
-export type ShoppingListRenameIn = { 
+export type ShoppingListRenameIn = {
   nombre: string
- };
+};
 
-export type ShoppingItemCreateIn = { 
-  nombre: string; 
+export type ShoppingItemCreateIn = {
+  nombre: string;
   cantidad: string
- };
-export type ShoppingItemUpdateIn = { 
+};
+export type ShoppingItemUpdateIn = {
   nombre?: string | null;
-  cantidad?: string | null; 
+  cantidad?: string | null;
   done?: boolean | null;
 };
 
-// --- SEARCH ---
+// --- SEARCH (respuesta cruda del endpoint /search/all o /search/barcode/all) ---
 export type StoreRawItem = {
-  title: string;   
-  price: string;    
-  url: string;   
+  title: string;
+  price: string;              
+  url: string;
   image_url?: string;
-  barcode? : string; 
+  barcode?: string;
+  promotion?: string;         
 };
 
 export type SearchRawResponse = Record<string, StoreRawItem[]>;
 
 export type SearchHit = {
-  store: string;     
-  name: string;     
-  price: number;     
+  store: string;
+  name: string;
+  price?: number;               
   url: string;
   image_url?: string;
   barcode?: string;
+  promotion?: string;      
 };
 
+// --- USER / AUTLOGIN ---
 export type User = {
   id: number;
   email: string;
@@ -153,10 +161,10 @@ export type AutoLoginResponse = {
   valid: boolean;
 };
 
+// --- SCRAPE SOURCES ---
 export type ScrapeSources = {
   carrefour: boolean;
   coto: boolean;
   jumbo: boolean;
   dia: boolean;
 };
-

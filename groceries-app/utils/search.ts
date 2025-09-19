@@ -1,67 +1,83 @@
-// utils/search.ts
+// src/utils/search.ts
+import type { SearchHit, StoreRawItem } from "../src/api/types";
+
+const STORES = ["carrefour", "coto", "dia", "jumbo"] as const;
+type StoreKey = typeof STORES[number];
+
+export function parseArsToNumber(ars?: string | null): number | undefined {
+  if (!ars) return undefined;
+  const only = ars.replace(/[^\d.,]/g, "");
+  const normalized =
+    only.includes(",") && only.lastIndexOf(",") > only.lastIndexOf(".")
+      ? only.replace(/\./g, "").replace(",", ".")
+      : only.replace(/,/g, "");
+  const n = Number(normalized);
+  return Number.isFinite(n) ? n : undefined;
+}
+
+// ✅ siempre mapea DESDE una lista de items
+function mapItems(store: StoreKey, items?: StoreRawItem[]): SearchHit[] {
+  if (!items?.length) return [];
+  return items.map((it) => ({
+    store,
+    name: it.title ?? "",
+    price: parseArsToNumber(it.price),
+    url: it.url,
+    image_url: it.image_url,
+    barcode: it.barcode,
+    promotion:
+      typeof it.promotion === "string" && it.promotion.trim().length
+        ? it.promotion.trim()
+        : undefined,
+  }));
+}
+
 import { useEffect, useState } from "react";
-import { SearchHit, SearchRawResponse, StoreRawItem } from "../src/api/types";
 
-// Convierte cualquier valor a array
-export const asList = <T = any>(v: any): T[] => (
-  Array.isArray(v) ? v : (v ? [v] : [])
-);
+// ... lo que ya tenés (parseArsToNumber, mapSearchResponse, etc.)
 
-export function useDebouncedValue<T>(value: T, delay = 420) {
+export function useDebouncedValue<T>(value: T, delay: number): T {
   const [debounced, setDebounced] = useState(value);
+
   useEffect(() => {
-    const id = setTimeout(() => setDebounced(value), delay);
-    return () => clearTimeout(id);
+    const handler = setTimeout(() => setDebounced(value), delay);
+    return () => clearTimeout(handler);
   }, [value, delay]);
+
   return debounced;
 }
 
-        
-export function parsePriceToNumber(raw?: string | number | null): number {
-  if (raw == null) return 0;
-  if (typeof raw === "number") return Number.isFinite(raw) ? raw : 0;
 
-  let s = String(raw).trim();
-  if (!s) return 0;
 
-  // quitar cualquier símbolo que no sea dígito, punto o coma (pero dejar . y , para analizar formato)
-  // también quitamos moneda/espacios
-  s = s.replace(/[^\d.,-]/g, "");
+export function mapSearchResponse(data: any): SearchHit[] {
+  if (!data) return [];
 
-  if (s.includes(",")) {
-    s = s.replace(/\./g, "");  // remove thousand dots
-    s = s.replace(",", ".");   // decimal comma -> dot
-  } else {
-    const parts = s.split(".");
-    if (parts.length > 2) {
-      const last = parts.pop()!;
-      s = parts.join("") + "." + last;
-    }
+  // B) con wrapper
+  const maybeRecord = data?.results ?? data;
+
+  // A) record por tienda
+  if (
+    maybeRecord &&
+    (Array.isArray(maybeRecord.carrefour) ||
+      Array.isArray(maybeRecord.coto) ||
+      Array.isArray(maybeRecord.dia) ||
+      Array.isArray(maybeRecord.jumbo))
+  ) {
+    const out: SearchHit[] = [];
+    for (const s of STORES) out.push(...mapItems(s, maybeRecord[s]));
+    return out.filter((h) => !!h.name && !!h.url);
   }
 
-  const n = parseFloat(s);
-  return Number.isFinite(n) ? n : 0;
-}
+  // C) array de buckets { source, items }
+  if (Array.isArray(maybeRecord)) {
+    const out: SearchHit[] = [];
+    for (const b of maybeRecord) {
+      const src = (b?.source ?? "").toLowerCase();
+      if (!STORES.includes(src)) continue;
+      out.push(...mapItems(src as StoreKey, b?.items));
+    }
+    return out.filter((h) => !!h.name && !!h.url);
+  }
 
-export function mapSearchResponse(data?: SearchRawResponse | null): SearchHit[] {
-  const out: SearchHit[] = [];
-  const results = (data as any)?.results ?? {};
-
-  Object.entries(results).forEach(([store, items]) => {
-    asList<StoreRawItem>(items).forEach((it) => {
-      if (!it) return;
-      out.push({
-        store,
-        name: it.title,
-        price: parsePriceToNumber((it as any)?.price),
-        url: it.url,
-        image_url: (it as any)?.image_url,
-        barcode: (it as any)?.barcode,
-      });
-    });
-  });
-
-  // opcional: ordenar por precio asc
-  out.sort((a, b) => a.price - b.price);
-  return out;
+  return [];
 }
