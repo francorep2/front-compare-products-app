@@ -2,129 +2,167 @@ import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import { BottomTabBarProps } from "@react-navigation/bottom-tabs";
 import { router } from "expo-router";
 import { Pressable, StyleSheet, View } from "react-native";
+import Animated, { useAnimatedStyle, withTiming } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-const palette = {
+// Paleta de colores centralizada para un estilo consistente.
+const colors = {
   primary: "#FF1455",
-  active:  "#FF1455",
-  idle:    "#B7C0CD",
-  bg:      "#FFFFFF",
+  white: "#FFFFFF",
+  black: "#000000",
+  gray100: "#B7C0CD",
 };
 
-const MARGIN_H = 12;
-const BAR_HEIGHT = 66;
-const FAB_SIZE = 62;
-const CENTER_SPACE = FAB_SIZE + 18;
-const PAD_H = 18;
+// Constantes de diseño
+const BAR_HEIGHT = 68;
 
+// Rutas, incluyendo 'home' para el botón central.
 const ROUTES = {
   newList: "new-list",
   search: "search",
+  home: "home",
   purchases: "purchases",
   profile: "profile",
 } as const;
 
+
+/**
+ * Componente de ícono individual para la barra de navegación.
+ * Incluye animación para el estado activo/inactivo.
+ */
+const AnimatedTabBarItem = ({
+  routeName,
+  iconActive,
+  iconIdle,
+  iconComponent: IconComponent = Ionicons,
+  isActive,
+  onPress,
+}: {
+  routeName: string;
+  iconActive: string;
+  iconIdle: string;
+  iconComponent?: typeof Ionicons | typeof MaterialCommunityIcons;
+  isActive: boolean;
+  onPress: (routeName: string) => void;
+}) => {
+  const animatedStyle = useAnimatedStyle(() => {
+    return {
+      transform: [{ scale: withTiming(isActive ? 1.2 : 1, { duration: 200 }) }],
+      opacity: withTiming(isActive ? 1 : 0.7, { duration: 200 }),
+    };
+  });
+
+  return (
+    <Pressable
+      onPress={() => onPress(routeName)}
+      style={styles.itemContainer}
+      android_ripple={{ color: `${colors.primary}20`, borderless: true }}
+    >
+      <Animated.View style={animatedStyle}>
+        <IconComponent
+          name={isActive ? iconActive : iconIdle}
+          size={28}
+          color={isActive ? colors.white : colors.white}
+        />
+      </Animated.View>
+    </Pressable>
+  );
+};
+
+
+/**
+ * Barra de navegación inferior principal, rediseñada para ser moderna y funcional.
+ */
 export default function BottomBar({ state, navigation }: BottomTabBarProps) {
   const insets = useSafeAreaInsets();
   const currentName = state.routes[state.index]?.name;
 
-  const go = (routeName: string) => navigation.navigate(routeName as never);
-  const isActive = (routeName: string) => currentName === routeName;
-  const goCenter = () => router.push("/home");
-
-  const Item = ({
-    routeName,
-    iconActive,
-    iconIdle,
-    size = 28,
-  }: {
-    routeName: string;
-    iconActive: keyof typeof Ionicons.glyphMap;
-    iconIdle: keyof typeof Ionicons.glyphMap;
-    size?: number;
-  }) => {
-    const active = isActive(routeName);
-    return (
-      <Pressable
-        onPress={() => go(routeName)}
-        style={{ padding: 10, alignItems: "center", justifyContent: "center" }}
-        android_ripple={{ color: "#00000010", borderless: true }}
-      >
-        <Ionicons name={active ? iconActive : iconIdle} size={size} color={active ? palette.active : palette.idle} />
-      </Pressable>
-    );
+  const go = (routeName: string) => {
+    if (routeName === "home") {
+      router.push("/home"); // Navegación específica para Expo Router
+    } else {
+      navigation.navigate(routeName as never);
+    }
   };
-
+  const isActive = (routeName: string) => currentName === routeName;
+  
   return (
-    <View
-      pointerEvents="box-none"
-      style={{
-        position: "absolute",
-        left: 0,
-        right: 0,
-        bottom: 0,
-        paddingBottom: Math.max(insets.bottom, 10),
-      }}
-    >
-      {/* base sin sombra + borde superior hairline */}
-      <View
-        style={{
-          height: BAR_HEIGHT,
-          marginHorizontal: MARGIN_H,
-          backgroundColor: palette.bg,
-          borderRadius: 22,
-          justifyContent: "center",
-          overflow: "hidden",
-          borderTopWidth: StyleSheet.hairlineWidth,
-          borderTopColor: "#E9EEF5",
-        }}
-      >
-        <View
-          style={{
-            flexDirection: "row",
-            alignItems: "center",
-            paddingHorizontal: PAD_H,
-            justifyContent: "space-between",
-          }}
-        >
-          {/* izquierda */}
-          <View style={{ flex: 1, flexDirection: "row", justifyContent: "space-between", paddingRight: 8 }}>
-            <Item routeName={ROUTES.newList} iconActive="add-circle" iconIdle="add-circle-outline" />
-            <Item routeName={ROUTES.search}  iconActive="search"     iconIdle="search-outline" />
-          </View>
-
-          {/* espacio del FAB */}
-          <View style={{ width: CENTER_SPACE }} />
-
-          {/* derecha */}
-          <View style={{ flex: 1, flexDirection: "row", justifyContent: "space-between", paddingLeft: 8 }}>
-            <Item routeName={ROUTES.purchases} iconActive="cart"  iconIdle="cart-outline" />
-            <Item routeName={ROUTES.profile}   iconActive="person" iconIdle="person-outline" />
-          </View>
-        </View>
+    <View style={[styles.container, { paddingBottom: insets.bottom }]}>
+      <View style={styles.bar}>
+        <AnimatedTabBarItem
+          routeName={ROUTES.newList}
+          iconActive="add-circle"
+          iconIdle="add-circle-outline"
+          isActive={isActive(ROUTES.newList)}
+          onPress={go}
+        />
+        <AnimatedTabBarItem
+          routeName={ROUTES.search}
+          iconActive="search"
+          iconIdle="search-outline"
+          isActive={isActive(ROUTES.search)}
+          onPress={go}
+        />
+        <AnimatedTabBarItem
+          routeName={ROUTES.home}
+          iconActive="storefront"
+          iconIdle="storefront-outline"
+          iconComponent={MaterialCommunityIcons}
+          isActive={isActive(ROUTES.home)}
+          onPress={go}
+        />
+        <AnimatedTabBarItem
+          routeName={ROUTES.purchases}
+          iconActive="cart"
+          iconIdle="cart-outline"
+          isActive={isActive(ROUTES.purchases)}
+          onPress={go}
+        />
+        <AnimatedTabBarItem
+          routeName={ROUTES.profile}
+          iconActive="person"
+          iconIdle="person-outline"
+          isActive={isActive(ROUTES.profile)}
+          onPress={go}
+        />
       </View>
-
-      {/* FAB mitad dentro / mitad fuera */}
-      <Pressable
-        onPress={goCenter}
-        style={{
-          position: "absolute",
-          alignSelf: "center",
-          bottom: Math.max(insets.bottom, 10) + BAR_HEIGHT - FAB_SIZE / 2,
-          width: FAB_SIZE,
-          height: FAB_SIZE,
-          borderRadius: FAB_SIZE / 2,
-          backgroundColor: palette.primary,
-          alignItems: "center",
-          justifyContent: "center",
-          zIndex: 20,
-        }}
-        android_ripple={{ color: "#ffffff30", radius: FAB_SIZE / 2 }}
-        accessibilityRole="button"
-        accessibilityLabel="Inicio"
-      >
-        <MaterialCommunityIcons name="storefront-outline" size={30} color="#fff" />
-      </Pressable>
     </View>
   );
 }
+const styles = StyleSheet.create({
+  container: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    backgroundColor: 'transparent',
+  },
+  bar: {
+    height: BAR_HEIGHT,
+    backgroundColor: colors.primary,
+    borderTopLeftRadius: 0,
+    borderTopRightRadius: 0,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-around",
+
+    // --- CONFIGURACIÓN DE LA SOMBRA SUPERIOR ---
+
+    // Sombra para iOS
+    shadowColor: colors.black,
+    shadowOffset: { width: 0, height: -4 }, 
+    shadowOpacity: 0.08,                  
+    shadowRadius: 8,                      
+    
+    // Sombra para Android
+    elevation: 10,                          
+    borderTopWidth: 1,                     
+    borderTopColor: "#00000010",          
+  },
+  itemContainer: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    height: "100%",
+  },
+});
