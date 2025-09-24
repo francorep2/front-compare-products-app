@@ -4,19 +4,9 @@ import { router } from "expo-router";
 import { Pressable, StyleSheet, View } from "react-native";
 import Animated, { useAnimatedStyle, withTiming } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { colors } from "../../theme/colors";
 
-// Paleta de colores centralizada para un estilo consistente.
-const colors = {
-  primary: "#FF1455",
-  white: "#FFFFFF",
-  black: "#000000",
-  gray100: "#B7C0CD",
-};
-
-// Constantes de diseño
 const BAR_HEIGHT = 68;
-
-// Rutas, incluyendo 'home' para el botón central.
 const ROUTES = {
   newList: "new-list",
   search: "search",
@@ -26,10 +16,6 @@ const ROUTES = {
 } as const;
 
 
-/**
- * Componente de ícono individual para la barra de navegación.
- * Incluye animación para el estado activo/inactivo.
- */
 const AnimatedTabBarItem = ({
   routeName,
   iconActive,
@@ -62,7 +48,7 @@ const AnimatedTabBarItem = ({
         <IconComponent
           name={isActive ? iconActive : iconIdle}
           size={28}
-          color={isActive ? colors.white : colors.white}
+          color={isActive ? colors.primary : colors.noActiveBottomBarIcon}
         />
       </Animated.View>
     </Pressable>
@@ -139,25 +125,14 @@ const styles = StyleSheet.create({
   },
   bar: {
     height: BAR_HEIGHT,
-    backgroundColor: colors.primary,
+    backgroundColor: colors.white,
     borderTopLeftRadius: 0,
     borderTopRightRadius: 0,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-around",
 
-    // --- CONFIGURACIÓN DE LA SOMBRA SUPERIOR ---
 
-    // Sombra para iOS
-    shadowColor: colors.black,
-    shadowOffset: { width: 0, height: -4 }, 
-    shadowOpacity: 0.08,                  
-    shadowRadius: 8,                      
-    
-    // Sombra para Android
-    elevation: 10,                          
-    borderTopWidth: 1,                     
-    borderTopColor: "#00000010",          
   },
   itemContainer: {
     flex: 1,

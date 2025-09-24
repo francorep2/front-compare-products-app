@@ -9,7 +9,7 @@
       "backgroundColor": "#FD1648"
     },
     "extra": {
-      "EXPO_PUBLIC_API_URL": "http://192.168.0.83:8000"
+      "EXPO_PUBLIC_API_URL": "https://api-compare-products-app.onrender.com"
     },
     "plugins": [
       "expo-router",
