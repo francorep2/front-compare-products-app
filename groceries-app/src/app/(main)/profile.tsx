@@ -1,8 +1,10 @@
 import { useRouter } from "expo-router";
 import { useEffect, useMemo, useState } from "react";
-import { Alert, Image, Pressable, ScrollView, Switch, View } from "react-native";
-import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
+import { ActivityIndicator, Alert, Image, Pressable, ScrollView, StyleSheet, Switch, View } from "react-native";
+import Animated, { FadeIn, FadeOut } from "react-native-reanimated"; // FadeIn y FadeOut para la animación
+import { SafeAreaView } from "react-native-safe-area-context";
 
+import { Ionicons } from "@expo/vector-icons";
 import { getScrapeSources, setScrapeSources } from "../../api/endpoints";
 import type { ScrapeSources } from "../../api/types";
 import { Text } from "../../components/ui/Text";
@@ -14,6 +16,15 @@ function capitalize(s?: string) {
   return s.charAt(0).toUpperCase() + s.slice(1);
 }
 
+function getInitials(name?: string) {
+    if (!name) return "?";
+    const parts = name.split(' ');
+    if (parts.length > 1) {
+        return `${parts[0][0]}${parts[parts.length - 1][0]}`.toUpperCase();
+    }
+    return name.substring(0, 2).toUpperCase();
+}
+
 const logos = {
   carrefour: require("../../../assets/company/carrefour.png"),
   coto: require("../../../assets/company/coto.png"),
@@ -23,20 +34,16 @@ const logos = {
 
 export default function ProfileScreen() {
   const { colors, spacing } = useTheme();
-  const insets = useSafeAreaInsets();
   const router = useRouter();
   const { user, logout } = useAuth();
 
-  const displayNameRaw = user?.name?.trim() || user?.email.split("@")[0] || "Usuario";
-  const displayName = capitalize(displayNameRaw);
+  const displayName = capitalize(user?.first_name?.trim() || user?.email.split("@")[0] || "Usuario");
+  const userInitials = getInitials(user?.first_name || user?.email);
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [sources, setSources] = useState<ScrapeSources>({
-    carrefour: true,
-    coto: true,
-    jumbo: true,
-    dia: true,
+    carrefour: true, coto: true, jumbo: true, dia: true,
   });
 
   useEffect(() => {
@@ -53,28 +60,21 @@ export default function ProfileScreen() {
   }, []);
 
   const items = useMemo(
-    () =>
-      (Object.keys(sources) as (keyof ScrapeSources)[]).map((k) => ({
-        key: k,
-        enabled: sources[k],
-        title: capitalize(k),
-        icon: logos[k],
-      })),
+    () => (Object.keys(sources) as (keyof ScrapeSources)[]).map((k) => ({
+      key: k,
+      enabled: sources[k],
+      title: capitalize(k),
+      icon: logos[k],
+    })),
     [sources]
   );
 
   const toggle = async (key: keyof ScrapeSources) => {
     const next = { ...sources, [key]: !sources[key] };
-
-    const allFalse = Object.values(next).every((v) => v === false);
-    if (allFalse) {
-      Alert.alert(
-        "No permitido",
-        "Debés dejar al menos un supermercado habilitado."
-      );
+    if (Object.values(next).every((v) => v === false)) {
+      Alert.alert("No permitido", "Debes dejar al menos un supermercado habilitado.");
       return;
     }
-
     setSources(next);
     setSaving(true);
     try {
@@ -82,112 +82,188 @@ export default function ProfileScreen() {
       setSources(saved);
     } catch (e: any) {
       setSources((prev) => ({ ...prev, [key]: !prev[key] }));
-      if (e?.status === 422) {
-        Alert.alert(
-          "No permitido",
-          e?.data?.detail?.[0]?.msg ??
-            "El servidor no permite deshabilitar todas las fuentes."
-        );
-      } else {
-        Alert.alert("Error", e?.message ?? "No se pudieron guardar cambios");
-      }
+      Alert.alert("Error", e?.message ?? "No se pudieron guardar cambios");
     } finally {
       setSaving(false);
     }
   };
 
-  const onEditProfile = () => router.push("/profile-edit");
-
   const onLogout = () => {
-    Alert.alert("Cerrar sesión", "¿Querés salir de tu cuenta?", [
+    Alert.alert("Cerrar sesión", "¿Quieres salir de tu cuenta?", [
       { text: "Cancelar", style: "cancel" },
       {
         text: "Cerrar sesión",
         style: "destructive",
         onPress: async () => {
-          try {
-            await logout();
-          } finally {
-            router.replace("/login");
-          }
+          try { await logout(); } 
+          finally { router.replace("/login"); }
         },
       },
     ]);
   };
 
-  const buttonStyle = {
-    alignSelf: "stretch" as const,
-    height: 48,
-    borderRadius: 999,
-    backgroundColor: colors.primary,
-    alignItems: "center" as const,
-    justifyContent: "center" as const,
-  };
-  const buttonText = { color: "#fff", fontWeight: "800" as const };
-
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: colors.white }} edges={["top", "bottom"]}>
-      <ScrollView
-        keyboardShouldPersistTaps="handled"
-        contentContainerStyle={{ padding: spacing.md, paddingBottom: insets.bottom + 120 }}
-      >
-        <Text style={{ fontSize: 32, fontWeight: "800", marginBottom: spacing.xs }}>
-          Bienvenido! <Text style={{ fontSize: 32, color: colors.secondary }}>{displayName}</Text>
-        </Text>
-
-        <Text style={{ color: colors.gray600, marginBottom: spacing.lg }} />
-
-        {/* Preferencias de scraping */}
-        <Text style={{ fontSize: 18, fontWeight: "700", marginBottom: spacing.sm }}>
-          Supermercados habilitados
-        </Text>
-        {items.map((it) => (
-          <Pressable
-            key={it.key}
-            onPress={() => !loading && !saving && toggle(it.key)}
-            style={{
-              flexDirection: "row",
-              alignItems: "center",
-              justifyContent: "space-between",
-              paddingVertical: spacing.sm,
-              paddingHorizontal: spacing.md,
-              marginBottom: spacing.sm,
-              borderRadius: 12,
-              backgroundColor: colors.gray100,
-            }}
-          >
-            <View style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
-              <Image
-                source={it.icon}
-                resizeMode="contain"
-                style={{ width: 32, height: 32, borderRadius: 6, backgroundColor: "#fff" }}
-              />
-              <Text style={{ fontSize: 16 }}>{it.title}</Text>
+    <SafeAreaView style={[styles.safeArea, { backgroundColor: colors.background }]} edges={["top"]}>
+      <ScrollView contentContainerStyle={{ padding: spacing.md, paddingBottom: spacing.lg }}>
+        
+        <Animated.View entering={FadeIn.duration(400)} style={[styles.profileHeader, { backgroundColor: colors.primary }]}>
+            <View style={[styles.avatar, { backgroundColor: colors.secondary }]}>
+                <Text style={styles.avatarText}>{userInitials}</Text>
             </View>
-            <Switch
-              value={it.enabled}
-              onValueChange={() => toggle(it.key)}
-              disabled={loading || saving}
-              trackColor={{ true: colors.primary, false: "#ccc" }}
-              thumbColor={it.enabled ? colors.secondary : "#eee"}
-            />
-          </Pressable>
-        ))}
+            <Text style={styles.profileName}>{displayName}</Text>
+            <Text style={styles.profileEmail}>{user?.email}</Text>
+            <Pressable style={styles.editButton} onPress={() => router.push("/profile-edit")}>
+                <Text style={styles.editButtonText}>Editar Perfil</Text>
+            </Pressable>
+        </Animated.View>
 
-        <View style={{ height: 1, backgroundColor: "#E9EEF5", marginVertical: spacing.lg }} />
+        <Animated.View entering={FadeIn.duration(400).delay(200)}>
+            <Text style={[styles.sectionTitle, { color: colors.secondary }]}>
+                Supermercados Habilitados
+            </Text>
+            <View style={[styles.card, { backgroundColor: colors.white }]}>
+                {loading ? <ActivityIndicator style={{ padding: spacing.md }}/> : 
+                    items.map((it, index) => (
+                        <View key={it.key} style={[styles.rowContainer, index === items.length - 1 && { borderBottomWidth: 0 }]}>
+                            <Pressable onPress={() => toggle(it.key)} style={styles.settingsRow}>
+                                <View style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
+                                    <Image source={it.icon} resizeMode="contain" style={styles.logo} />
+                                    <Text style={[styles.rowTitle, { color: colors.text }]}>{it.title}</Text>
+                                </View>
+                                <Switch
+                                    value={it.enabled}
+                                    onValueChange={() => toggle(it.key)}
+                                    disabled={saving}
+                                    trackColor={{ true: colors.primary, false: colors.gray100 }}
+                                    thumbColor={colors.white}
+                                />
+                            </Pressable>
+                            
+                            {/* --- AQUÍ ESTÁ EL AVISO PARA COTO --- */}
+                            {it.key === 'coto' && !it.enabled && (
+                                <Animated.View entering={FadeIn.duration(300)} exiting={FadeOut.duration(300)} style={styles.cotoDisclaimer}>
+                                    <Ionicons name="rocket-outline" size={14} color={colors.success} />
+                                    <Text style={[styles.cotoDisclaimerText, { color: colors.success }]}>
+                                        ¡Tus búsquedas ahora serán mucho más rápidas!
+                                    </Text>
+                                </Animated.View>
+                            )}
+                        </View>
+                    ))
+                }
+            </View>
+        </Animated.View>
 
-        {/* Botón: Editar Perfil */}
-        <Pressable onPress={onEditProfile} style={buttonStyle}>
-          <Text style={buttonText}>Editar Perfil</Text>
-        </Pressable>
+        <Animated.View entering={FadeIn.duration(400).delay(400)}>
+            <Pressable onPress={onLogout} style={styles.logoutButton}>
+                <Ionicons name="log-out-outline" size={22} color={colors.error} />
+                <Text style={[styles.logoutButtonText, { color: colors.error }]}>Cerrar sesión</Text>
+            </Pressable>
+        </Animated.View>
 
-        <View style={{ height: 1, backgroundColor: "#E9EEF5", marginVertical: spacing.lg }} />
-
-        {/* Botón: Cerrar sesión */}
-        <Pressable onPress={onLogout} style={buttonStyle}>
-          <Text style={buttonText}>Cerrar sesión</Text>
-        </Pressable>
       </ScrollView>
     </SafeAreaView>
   );
 }
+
+const styles = StyleSheet.create({
+    safeArea: { flex: 1 },
+    profileHeader: {
+        borderRadius: 20,
+        padding: 24,
+        alignItems: 'center',
+        marginBottom: 24,
+    },
+    avatar: {
+        width: 80,
+        height: 80,
+        borderRadius: 40,
+        justifyContent: 'center',
+        alignItems: 'center',
+        marginBottom: 12,
+    },
+    avatarText: {
+        fontSize: 32,
+        fontWeight: 'bold',
+        color: 'white',
+    },
+    profileName: {
+        fontSize: 22,
+        fontWeight: 'bold',
+        color: 'white',
+    },
+    profileEmail: {
+        fontSize: 16,
+        color: 'rgba(255, 255, 255, 0.7)',
+        marginTop: 4,
+    },
+    editButton: {
+        marginTop: 16,
+        backgroundColor: 'rgba(255, 255, 255, 0.2)',
+        paddingHorizontal: 16,
+        paddingVertical: 8,
+        borderRadius: 999,
+    },
+    editButtonText: {
+        color: 'white',
+        fontWeight: '600',
+    },
+    sectionTitle: {
+        fontSize: 16,
+        fontWeight: "600",
+        marginBottom: 12,
+        paddingHorizontal: 4,
+    },
+    card: {
+        borderRadius: 16,
+        shadowColor: "#000",
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.05,
+        shadowRadius: 10,
+        elevation: 3,
+    },
+    rowContainer: {
+        borderBottomWidth: 1,
+        borderBottomColor: '#F0F0F0',
+        paddingHorizontal: 12,
+    },
+    settingsRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        paddingVertical: 12,
+    },
+    logo: {
+        width: 40,
+        height: 40,
+        borderRadius: 8,
+    },
+    rowTitle: {
+        fontSize: 16,
+        fontWeight: '500',
+    },
+    logoutButton: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        padding: 16,
+        marginTop: 24,
+    },
+    logoutButtonText: {
+        fontSize: 16,
+        fontWeight: '600',
+        marginLeft: 8,
+    },
+    // --- ESTILOS PARA EL NUEVO AVISO ---
+    cotoDisclaimer: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 6,
+        paddingBottom: 12,
+        paddingHorizontal: 4,
+    },
+    cotoDisclaimerText: {
+        fontSize: 12,
+        fontWeight: '500',
+    },
+});

@@ -1,59 +1,50 @@
-import { createContext, useContext, useEffect, useState } from "react";
+import { createContext, ReactNode, useContext, useEffect, useState } from "react";
 import { getToken, setToken } from "../api/clients";
-import { login as loginFn, me as meFn } from "../api/endpoints";
-import { TokenOut } from "../api/types";
+import { apiLogin, me } from "../api/endpoints";
+import type { MeOut } from "../api/types";
 
-type User = { id: number; email: string; name?: string } | null;
-
-type Ctx = {
-  user: User;
+// 1. Definimos el tipo completo para el contexto
+type AuthContextType = {
+  user: MeOut | null;
+  isLoading: boolean;
   login: (email: string, password: string) => Promise<void>;
   logout: () => Promise<void>;
-  loading: boolean;
+  showDisclaimerOnLoad: boolean;
+  clearDisclaimerFlag: () => void;
 };
 
-const Ctx = createContext<Ctx>({
-  user: null,
-  login: async () => {},
-  logout: async () => {},
-  loading: true,
-});
+const AuthContext = createContext<AuthContextType | null>(null);
 
-export function AuthProvider({ children }: { children: React.ReactNode }) {
-  const [user, setUser] = useState<User>(null);
-  const [loading, setLoading] = useState(true);
+export function AuthProvider({ children }: { children: ReactNode }) {
+  const [user, setUser] = useState<MeOut | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  
+  // 2. AÑADIMOS EL ESTADO PARA EL MODAL
+  const [showDisclaimerOnLoad, setShowDisclaimerOnLoad] = useState(false);
 
   useEffect(() => {
     (async () => {
       try {
-        const t = await getToken();
-        if (t) {
-          const me = await meFn(); // requiere Authorization: Bearer <token> desde request()
-          setUser({ id: me.id, email: me.email, name: (me as any).name }); // opcional
-        } else {
-          setUser(null);
+        const token = await getToken();
+        if (token) {
+          const data = await me();
+          setUser(data);
         }
-      } catch {
+      } catch (e) {
         await setToken(null);
-        setUser(null);
       } finally {
-        setLoading(false);
+        setIsLoading(false);
       }
     })();
   }, []);
 
   const login = async (email: string, password: string) => {
-    try {
-      const tok: TokenOut = await loginFn({ email, password }); // debe devolver access_token (y opcional refresh_token)
-      // Guarda SOLO el access_token que tu request() usa en Authorization
-      await setToken(tok.access_token);
-      const profile = await meFn();
-      setUser({ id: profile.id, email: profile.email });
-    } catch (e: any) {
-      await setToken(null);
-      setUser(null);
-      throw new Error(e?.message ?? "No se pudo iniciar sesión");
-    }
+    const { access_token } = await apiLogin({ email, password });
+    await setToken(access_token);
+    const data = await me();
+    setUser(data);
+    // 3. ACTIVAMOS LA BANDERA AL INICIAR SESIÓN
+    setShowDisclaimerOnLoad(true);
   };
 
   const logout = async () => {
@@ -61,11 +52,25 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setUser(null);
   };
 
+  // 4. CREAMOS UNA FUNCIÓN PARA LIMPIAR LA BANDERA
+  const clearDisclaimerFlag = () => {
+    setShowDisclaimerOnLoad(false);
+  };
+
   return (
-    <Ctx.Provider value={{ user, login, logout, loading }}>
+    <AuthContext.Provider 
+      // 5. EXPONEMOS LOS NUEVOS VALORES
+      value={{ user, isLoading, login, logout, showDisclaimerOnLoad, clearDisclaimerFlag }}
+    >
       {children}
-    </Ctx.Provider>
+    </AuthContext.Provider>
   );
 }
 
-export const useAuth = () => useContext(Ctx);
+export const useAuth = (): AuthContextType => {
+  const context = useContext(AuthContext);
+  if (!context) {
+    throw new Error("useAuth must be used within an AuthProvider");
+  }
+  return context;
+};

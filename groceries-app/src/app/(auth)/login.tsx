@@ -1,4 +1,3 @@
-// app/(auth)/login.tsx
 import { useRouter } from "expo-router";
 import { useMemo, useState } from "react";
 import { ActivityIndicator, Alert, Image, Pressable, View } from "react-native";
@@ -71,10 +70,11 @@ export default function Login() {
     setSubmitting(true);
     try {
       await login(email.trim().toLowerCase(), password);
-      router.replace("/home?showDisclaimer=true"); 
+      // La redirección manual se elimina. El AuthProvider se encarga de esto.
     } catch (e: any) {
       const errorMessage = e?.message ?? "No se pudo iniciar sesión";
       setErr(errorMessage);
+    } finally {
       setSubmitting(false);
     }
   };
@@ -93,7 +93,6 @@ export default function Login() {
         />
       </View>
    
-
       {/* Título */}
       <Text style={{ fontSize: 24, fontWeight: "800", textAlign: "center", marginBottom: spacing.sm }}>
         ¡Bienvenido!
@@ -151,7 +150,7 @@ export default function Login() {
       {/* CTA principal */}
       <Button
         title="Iniciar Sesión"
-        onPress={onSubmit}           // 👈 siempre habilitado; valida con pop-ups
+        onPress={onSubmit}
         loading={submitting}
         style={{ marginTop: 4, backgroundColor: colors.primary }}
       />
@@ -160,13 +159,13 @@ export default function Login() {
       <View style={{ alignItems: "center", marginTop: spacing.sm }}>
         <Text style={{ color: colors.gray600 }}>
           ¿No tenés una cuenta?{" "}
-          <Pressable onPress={() => router.push("/register") /* grupo (auth) → /register */}>
+          <Pressable onPress={() => router.push("/register")}>
             <Text style={{ color: colors.secondary, fontWeight: "700" }}>Registrate</Text>
           </Pressable>
         </Text>
       </View>
 
-      {/* Divider + Google (deshabilitado por ahora) */}
+      {/* Divider + Google */}
       <View style={{ marginTop: spacing.lg, gap: spacing.md }}>
         <Divider />
         <GoogleButton disabled />

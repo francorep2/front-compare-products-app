@@ -1,31 +1,21 @@
 import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
-import { useLocalSearchParams, useRouter } from "expo-router";
-import { useEffect, useState } from "react";
-import {
-  Pressable,
-  SafeAreaView,
-  ScrollView,
-  StyleSheet,
-  View
-} from "react-native";
+import { useRouter } from "expo-router";
+import { ActivityIndicator, Alert, Pressable, SafeAreaView, ScrollView, StyleSheet, View } from "react-native";
 
-// --- API y Componentes (sin cambios en las importaciones) ---
-import type { MeOut } from "../../api/types";
 import DisclaimerModal from "../../components/DisclaimerModal";
 import FeaturedCarousel from "../../components/FeaturedCarousel";
 import { Text } from "../../components/ui/Text";
+import { useAuth } from "../../providers/auth";
 import { colors } from "../../theme/colors";
 
-// --- 1. DEFINIMOS LAS ACCIONES EN UNA LISTA ---
-// Esto hace que sea muy fácil añadir o quitar botones en el futuro.
 const actions = [
   {
     title: "Crear una nueva lista",
     description: "Empieza a armar tu próxima compra.",
     icon: "add-circle-outline" as keyof typeof Ionicons.glyphMap,
     route: "/new-list",
-    type: "primary", // La marcamos como acción principal
+    type: "primary",
   },
   {
     title: "Buscar productos",
@@ -40,28 +30,49 @@ const actions = [
     type: "secondary",
   },
   {
-    title: "Mi perfil",
-    icon: "person-outline" as keyof typeof Ionicons.glyphMap,
-    route: "/profile",
-    type: "secondary",
+    title: "Cerrar sesión",
+    icon: "log-out-outline" as keyof typeof Ionicons.glyphMap,
+    route: "/login",
+    type: "destructive",
   },
 ];
 
-
 export default function Home() {
   const router = useRouter();
-  const { showDisclaimer } = useLocalSearchParams();
-  const [loading, setLoading] = useState(true);
-  const [user, setUser] = useState<MeOut | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [isDisclaimerVisible, setDisclaimerVisible] = useState(showDisclaimer === 'true');
-
-  useEffect(() => { /* ... (sin cambios) */ }, []);
-  if (loading) { /* ... (sin cambios) */ }
-  if (error) { /* ... (sin cambios) */ }
-
+  
+  // --- 1. OBTENEMOS TODO DEL CONTEXTO ---
+  // Ya no necesitamos 'useState' ni 'useEffect' para el modal
+  const { user, logout, isLoading, showDisclaimerOnLoad, clearDisclaimerFlag } = useAuth();
+  
   const primaryAction = actions.find(a => a.type === 'primary');
-  const secondaryActions = actions.filter(a => a.type === 'secondary');
+  const secondaryActions = actions.filter(a => a.type === 'secondary' || a.type === 'destructive');
+
+  const onLogout = () => {
+    Alert.alert("Cerrar sesión", "¿Quieres salir de tu cuenta?", [
+      { text: "Cancelar", style: "cancel" },
+      {
+        text: "Cerrar sesión",
+        style: "destructive",
+        onPress: async () => {
+          try {
+            await logout();
+            router.replace("/login");
+          } catch (e) {
+            console.error("Error al cerrar sesión:", e);
+            router.replace("/login");
+          }
+        },
+      },
+    ]);
+  };
+
+  if (isLoading) {
+    return (
+      <View style={styles.centeredScreen}>
+        <ActivityIndicator size="large" color={colors.primary} />
+      </View>
+    );
+  }
 
   return (
     <View style={styles.rootContainer}>
@@ -72,14 +83,18 @@ export default function Home() {
       <SafeAreaView style={styles.safeArea}>
         <ScrollView contentContainerStyle={styles.container}>
           <View style={styles.header}>
-            <Text style={[styles.title, { color: colors.white }]}>
-              Bienvenido/a !
-            </Text>
+            <View>
+              <Text style={[styles.title, { color: colors.white }]}>
+                Bienvenido!
+              </Text>
+            </View>
+            <Pressable style={styles.profileIconContainer} onPress={() => router.push('/profile')}>
+                <Ionicons name="person-circle-outline" size={40} color={colors.white} />
+            </Pressable>
           </View>
           
           <FeaturedCarousel />
 
-          {/* --- 2. RENDERIZAMOS LA ACCIÓN PRINCIPAL --- */}
           <View style={styles.section}>
             {primaryAction && (
               <Pressable style={styles.primaryActionCard} onPress={() => router.push(primaryAction.route)}>
@@ -93,62 +108,57 @@ export default function Home() {
             )}
           </View>
 
-          {/* --- 3. RENDERIZAMOS LA LISTA DE ACCIONES SECUNDARIAS --- */}
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>Más opciones</Text>
             <View style={styles.secondaryActionsList}>
-              {secondaryActions.map((action, index) => (
-                <Pressable
-                  key={action.route}
-                  style={[
-                    styles.secondaryActionItem,
-                    index === secondaryActions.length - 1 && styles.secondaryActionItemLast // Sin borde inferior para el último
-                  ]}
-                  onPress={() => router.push(action.route)}
-                >
-                  <Ionicons name={action.icon} size={24} color={colors.tertiary} />
-                  <Text style={styles.secondaryActionTitle}>{action.title}</Text>
-                  <Ionicons name="chevron-forward-outline" size={22} color={colors.gray100} />
-                </Pressable>
-              ))}
+              {secondaryActions.map((action, index) => {
+                const isDestructive = action.type === 'destructive';
+                return (
+                  <Pressable
+                    key={action.route}
+                    style={[
+                      styles.secondaryActionItem,
+                      index === secondaryActions.length - 1 && styles.secondaryActionItemLast
+                    ]}
+                    onPress={isDestructive ? onLogout : () => router.push(action.route)}
+                  >
+                    <Ionicons name={action.icon} size={24} color={isDestructive ? colors.error : colors.tertiary} />
+                    <Text style={[styles.secondaryActionTitle, isDestructive && styles.destructiveText]}>{action.title}</Text>
+                    <Ionicons name="chevron-forward-outline" size={22} color={colors.gray100} />
+                  </Pressable>
+                )
+              })}
             </View>
           </View>
-
-          {/* Botón de Logout (sin cambios) */}
-          <Pressable style={styles.logoutButton} onPress={async () => { /* ... */ }}>
-            <Ionicons name="log-out-outline" size={22} color={colors.tertiary} />
-            <Text style={styles.logoutText}>Cerrar sesión</Text>
-          </Pressable>
         </ScrollView>
       </SafeAreaView>
 
+      {/* --- 2. EL MODAL AHORA SE CONTROLA DIRECTAMENTE DESDE EL AUTHPROVIDER --- */}
       <DisclaimerModal 
-        visible={isDisclaimerVisible}
-        onClose={() => setDisclaimerVisible(false)}
+        visible={showDisclaimerOnLoad}
+        onClose={clearDisclaimerFlag} 
       />
     </View>
   );
 }
-
-// --- 4. ESTILOS COMPLETAMENTE NUEVOS PARA EL DISEÑO ---
 const styles = StyleSheet.create({
   rootContainer: { flex: 1, backgroundColor: colors.white },
-  gradientBackground: { position: "absolute", top: 0, left: 0, right: 0, height: 500 },
+  centeredScreen: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 20 },
+  gradientBackground: { position: "absolute", top: 0, left: 0, right: 0, height: 250 },
   safeArea: { flex: 1, backgroundColor: "transparent" },
-  container: { paddingVertical: 24 },
-  header: { marginBottom: 24, paddingHorizontal: 24 },
-  title: { fontSize: 28, fontWeight: "bold" },
-  section: {
-    marginTop: 16,
+  container: { paddingBottom: 48 },
+  header: {
+    paddingTop: 16,
+    marginBottom: 24,
     paddingHorizontal: 24,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
   },
-  sectionTitle: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: colors.tertiary,
-    marginBottom: 12,
-  },
-  // Estilos para la Tarjeta de Acción Principal
+  title: { fontSize: 28, fontWeight: "bold" },
+  profileIconContainer: { padding: 4, },
+  section: { marginTop: 24, paddingHorizontal: 24, },
+  sectionTitle: { fontSize: 18, fontWeight: '600', color: colors.tertiary, marginBottom: 12, },
   primaryActionCard: {
     backgroundColor: colors.white,
     borderRadius: 16,
@@ -161,21 +171,9 @@ const styles = StyleSheet.create({
     shadowRadius: 10,
     elevation: 5,
   },
-  primaryActionTextContainer: {
-    flex: 1,
-    marginLeft: 16,
-  },
-  primaryActionTitle: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    color: colors.primary,
-  },
-  primaryActionDescription: {
-    fontSize: 14,
-    color: colors.tertiary,
-    marginTop: 4,
-  },
-  // Estilos para la Lista de Acciones Secundarias
+  primaryActionTextContainer: { flex: 1, marginLeft: 16 },
+  primaryActionTitle: { fontSize: 16, fontWeight: 'bold', color: colors.primary },
+  primaryActionDescription: { fontSize: 14, color: colors.tertiary, marginTop: 4 },
   secondaryActionsList: {
     backgroundColor: colors.white,
     borderRadius: 16,
@@ -191,11 +189,9 @@ const styles = StyleSheet.create({
     paddingVertical: 18,
     paddingHorizontal: 20,
     borderBottomWidth: 1,
-    borderBottomColor: colors.gray50, // Un gris muy claro para el separador
+    borderBottomColor: colors.gray50,
   },
-  secondaryActionItemLast: {
-    borderBottomWidth: 0,
-  },
+  secondaryActionItemLast: { borderBottomWidth: 0 },
   secondaryActionTitle: {
     flex: 1,
     marginLeft: 16,
@@ -203,17 +199,5 @@ const styles = StyleSheet.create({
     color: colors.tertiary,
     fontWeight: '500',
   },
-  // Otros estilos
-  logoutButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginTop: 48,
-    padding: 10,
-  },
-  logoutText: {
-    marginLeft: 8,
-    color: colors.tertiary,
-    fontSize: 16,
-  },
+  destructiveText: { color: colors.error, },
 });

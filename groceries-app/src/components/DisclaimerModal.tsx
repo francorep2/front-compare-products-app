@@ -1,6 +1,8 @@
 import { Ionicons } from "@expo/vector-icons";
 import { Modal, Pressable, StyleSheet, Text, View } from "react-native";
-import { colors } from "../theme/colors"; // Asegúrate de que la ruta a tus colores sea correcta
+
+// Asegúrate de que la ruta a tus colores sea correcta
+import { colors } from "../theme/colors";
 
 interface DisclaimerModalProps {
   visible: boolean;
@@ -13,25 +15,31 @@ export default function DisclaimerModal({ visible, onClose }: DisclaimerModalPro
       animationType="fade"
       transparent={true}
       visible={visible}
-      onRequestClose={onClose} // Para el botón de "atrás" en Android
+      onRequestClose={onClose}
     >
       <View style={styles.centeredView}>
         <View style={styles.modalView}>
           <Ionicons
-            name="information-circle-outline"
+            name="shield-checkmark-outline"
             size={50}
             color={colors.primary}
             style={styles.icon}
           />
-          <Text style={styles.modalTitle}>Antes de empezar</Text>
+          <Text style={styles.modalTitle}>Aviso Importante</Text>
           <Text style={styles.modalText}>
-            Esta es una **versión de demostración**. Las búsquedas de precios se realizan en tiempo real y **pueden demorar unos segundos**.
+            Actualmente, las búsquedas pueden tardar unos segundos. ¡Ya estamos trabajando para optimizar la velocidad!
           </Text>
-          <Text style={styles.modalText}>
-            La información y los precios son referenciales. No nos responsabilizamos por diferencias, errores o falta de stock en las tiendas.
+          
+          {/* --- 1. DIVISOR VISUAL --- */}
+          <View style={styles.divider} />
+
+          {/* --- 2. TEXTO DEL DESCARGO DE RESPONSABILIDAD --- */}
+          <Text style={styles.disclaimerText}>
+            La información y los precios mostrados se obtienen de forma automática y son solo de referencia. Siempre verifica el precio y stock final en la tienda antes de comprar. No nos responsabilizamos por diferencias o decisiones de compra.
           </Text>
+          
           <Pressable style={styles.button} onPress={onClose}>
-            <Text style={styles.textStyle}>Entendido</Text>
+            <Text style={styles.textStyle}>Aceptar y continuar</Text>
           </Pressable>
         </View>
       </View>
@@ -44,22 +52,20 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: "center",
     alignItems: "center",
-    backgroundColor: "rgba(0, 0, 0, 0.6)", // Fondo oscuro semitransparente
+    backgroundColor: "rgba(0, 0, 0, 0.6)",
   },
   modalView: {
     margin: 20,
     backgroundColor: "white",
     borderRadius: 20,
-    padding: 35,
+    padding: 30, // Un poco más de padding
     alignItems: "center",
     shadowColor: "#000",
-    shadowOffset: {
-      width: 0,
-      height: 2,
-    },
+    shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.25,
     shadowRadius: 4,
     elevation: 5,
+    maxWidth: '90%',
   },
   icon: {
     marginBottom: 15,
@@ -72,11 +78,25 @@ const styles = StyleSheet.create({
     color: "#333",
   },
   modalText: {
-    marginBottom: 15,
+    marginBottom: 20, // Más espacio antes del divisor
     textAlign: "center",
     fontSize: 16,
     color: "#666",
     lineHeight: 24,
+  },
+  // --- 3. NUEVOS ESTILOS ---
+  divider: {
+    height: 1,
+    backgroundColor: '#E0E0E0',
+    width: '100%',
+    marginBottom: 20,
+  },
+  disclaimerText: {
+    marginBottom: 20,
+    textAlign: "center",
+    fontSize: 12, // Letra más pequeña
+    color: "#888", // Color más suave
+    lineHeight: 18,
   },
   button: {
     borderRadius: 20,

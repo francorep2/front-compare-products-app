@@ -37,6 +37,13 @@ export const login = (payload: LoginStartIn) =>
 
 export const me = () => request<MeOut>("/auth/me");
 
+export const apiLogin = (credentials: LoginStartIn): Promise<TokenOut> => {
+  return request<TokenOut>("/auth/login", {
+    method: "POST",
+    body: JSON.stringify(credentials),
+  });
+};
+
 // ---------- REGISTER (con OTP) ----------
 export const registerStart = (payload: RegisterStartIn) =>
   request<RegisterStartOut>("/auth/register/start", { method: "POST", body: JSON.stringify(payload) });
