@@ -46,8 +46,8 @@ const WaveBackground = () => {
   const height = 200;
 
   return (
-    <View style={{ position: 'absolute', top: 0, left: 0, right: 0, height }}>
-      <Svg height="100%" width="100%" viewBox={`0 0 ${width} ${height}`}>
+    <View pointerEvents="none" style={{ position: 'absolute', top: 0, left: 0, right: 0, height }}>
+      <Svg pointerEvents="none" height="100%" width="100%" viewBox={`0 0 ${width} ${height}`}>
         <Defs>
           <SvgGradient id="grad" x1="0%" y1="0%" x2="0%" y2="100%">
             <Stop offset="0%" stopColor={colors.primary} stopOpacity="1" />
@@ -65,31 +65,45 @@ const WaveBackground = () => {
 
 // --- Componente de Input controlado ---
 const ControlledInput = ({ control, name, placeholder, icon, ...props }) => {
-    const { colors } = useTheme();
-    return (
-        <Controller
-            control={control}
-            name={name}
-            render={({ field: { onChange, onBlur, value }, fieldState: { error } }) => (
-                <View>
-                    <View style={[styles.inputContainer, { borderColor: error ? colors.error : colors.border }]}>
-                        <Ionicons name={icon} size={20} color={colors.secondary} style={styles.inputIcon} />
-                        <TextInput
-                            value={value}
-                            onChangeText={onChange}
-                            onBlur={onBlur}
-                            placeholder={placeholder}
-                            style={[styles.input, { color: colors.text }]}
-                            placeholderTextColor={colors.gray400}
-                            {...props}
-                        />
-                    </View>
-                    {error && <Text style={styles.errorText}>{error.message}</Text>}
-                </View>
-            )}
-        />
-    )
-}
+  const { colors } = useTheme();
+  return (
+    <Controller
+      control={control}
+      name={name}
+      render={({ field: { onChange, onBlur, value }, fieldState: { error } }) => (
+        <View
+          pointerEvents="box-none"   // 👈 deja pasar toques a hijos
+          style={{ zIndex: 2 }}      // 👈 por si hay overlays
+        >
+          <View
+            style={[
+              styles.inputContainer,
+              { borderColor: error ? colors.error : colors.border, zIndex: 2, elevation: 2 }
+            ]}
+          >
+            <Ionicons
+              name={icon}
+              size={20}
+              color={colors.secondary}
+              style={styles.inputIcon}
+              pointerEvents="none"    // 👈 que el icono no intercepte el tap
+            />
+            <TextInput
+              value={value}
+              onChangeText={onChange}
+              onBlur={onBlur}
+              placeholder={placeholder}
+              style={[styles.input, { color: colors.text }]}
+              placeholderTextColor={colors.gray400}
+              {...props}
+            />
+          </View>
+          {error && <Text style={styles.errorText}>{error.message}</Text>}
+        </View>
+      )}
+    />
+  );
+};
 
 // --- Pantalla Principal ---
 export default function RegisterScreen() {
@@ -123,16 +137,18 @@ export default function RegisterScreen() {
     <View style={[styles.root, { backgroundColor: colors.background }]}>
       <WaveBackground />
       <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === "ios" ? "padding" : "height"}>
-        <ScrollView contentContainerStyle={styles.container} keyboardShouldPersistTaps="handled">
+        <ScrollView contentContainerStyle={styles.container} keyboardShouldPersistTaps="always"   contentInsetAdjustmentBehavior="always">
           <Animated.View entering={FadeInUp.duration(800).delay(200)} style={styles.content}>
             <Image source={require("../../../assets/logo.png")} style={styles.logo} />
             <Text style={[styles.title, { color: colors.text }]}>Crea tu cuenta</Text>
             <Text style={[styles.subtitle, { color: colors.secondary }]}>Completa tus datos para empezar</Text>
             
             <View style={styles.form}>
-              <ControlledInput control={control} name="firstName" placeholder="Nombre" icon="person-outline" />
+                    <ControlledInput control={control} name="firstName" placeholder="Nombre" icon="person-outline" />
               <ControlledInput control={control} name="lastName" placeholder="Apellido" icon="person-outline" />
-              <ControlledInput control={control} name="email" placeholder="Email" icon="mail-outline" keyboardType="email-address" autoCapitalize="none" />
+              <ControlledInput control={control} name="email" placeholder="Email" icon="mail-outline" />
+              
+      
               
               <Controller
                 control={control}

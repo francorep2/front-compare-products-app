@@ -9,12 +9,17 @@
       "backgroundColor": "#FD1648"
     },
     "extra": {
-      "EXPO_PUBLIC_API_URL": "https://api-compare-products-app.onrender.com"
+      "EXPO_PUBLIC_API_URL": "https://api-compare-products-app.onrender.com",
+      "router": {},
+      "eas": {
+        "projectId": "5d77ce7e-2783-4640-b0ad-916d31957da5"
+      }
     },
     "plugins": [
       "expo-router",
-      "expo-barcode-scanner",
-      "expo-secure-store"
+      "expo-secure-store",
+      "expo-camera",           
+      "expo-barcode-scanner"
     ],
     "router": {
       "root": "src/app/pages"
@@ -26,7 +31,12 @@
         "foregroundImage": "./assets/icono.png",
         "backgroundColor": "#FD1648"
       },
-      "edgeToEdge": true
+      "edgeToEdge": true,
+      "permissions": [
+        "android.permission.CAMERA"  
+      ],
+      "package": "com.francorep2.groceriesapp",
+      "versionCode": 1              
     },
     "ios": {
       "supportsTablet": true

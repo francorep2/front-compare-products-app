@@ -145,6 +145,7 @@ export default function VerifyScreen() {
               Ingresa el código de {OTP_LEN} dígitos que enviamos a:
             </Text>
             {!!email && <Text style={[styles.email, { color: colors.primary }]}>{String(email)}</Text>}
+            <Text>Revisa tu bandeja de SPAM</Text>
 
             <View style={styles.otpRow}>
               {digits.map((d, i) => (
