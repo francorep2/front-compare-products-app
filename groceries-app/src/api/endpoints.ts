@@ -44,6 +44,13 @@ export const apiLogin = (credentials: LoginStartIn): Promise<TokenOut> => {
   });
 };
 
+export const submitSupportTicket = (data: { message: string }): Promise<any> => {
+  return request("/support/tickets", {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+};
+
 // ---------- REGISTER (con OTP) ----------
 export const registerStart = (payload: RegisterStartIn) =>
   request<RegisterStartOut>("/auth/register/start", { method: "POST", body: JSON.stringify(payload) });

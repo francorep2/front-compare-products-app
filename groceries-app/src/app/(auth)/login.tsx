@@ -1,15 +1,12 @@
+import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import { useMemo, useState } from "react";
-import { ActivityIndicator, Alert, Image, Pressable, View } from "react-native";
-import { passwordResetStart } from "../../api/endpoints";
+import { Alert, Dimensions, Image, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, TextInput, View } from "react-native";
+import Animated, { FadeInUp } from "react-native-reanimated";
+import Svg, { Defs, Path, Stop, LinearGradient as SvgGradient } from "react-native-svg";
+
 import { Button } from "../../components/ui/Button";
-import { Divider } from "../../components/ui/Divider";
-import { FormField } from "../../components/ui/FormField";
-import { GoogleButton } from "../../components/ui/GoogleButton";
-import { CheckBadge, ErrorBadge } from "../../components/ui/Helpers";
-import { Input } from "../../components/ui/Input";
 import { PasswordInput } from "../../components/ui/PasswordInput";
-import Screen from "../../components/ui/Screen";
 import { Text } from "../../components/ui/Text";
 import { useAuth } from "../../providers/auth";
 import { useTheme } from "../../providers/theme";
@@ -18,10 +15,32 @@ function isValidEmail(v: string) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v);
 }
 
-type Existence = "unknown" | "checking" | "exists" | "absent";
+// --- Componente para el fondo de ola ---
+const WaveBackground = () => {
+  const { colors } = useTheme();
+  const { width } = Dimensions.get('window');
+  const height = 250; // Altura de la ola
+
+  return (
+    <View style={{ position: 'absolute', top: 0, left: 0, right: 0, height }}>
+      <Svg height="100%" width="100%" viewBox={`0 0 ${width} ${height}`}>
+        <Defs>
+          <SvgGradient id="grad" x1="0%" y1="0%" x2="0%" y2="100%">
+            <Stop offset="0%" stopColor={colors.primary} stopOpacity="1" />
+            <Stop offset="100%" stopColor={colors.secondary} stopOpacity="1" />
+          </SvgGradient>
+        </Defs>
+        <Path
+          fill="url(#grad)"
+          d={`M0,0 L0,${height * 0.7} Q${width / 2},${height} ${width},${height * 0.7} L${width},0 Z`}
+        />
+      </Svg>
+    </View>
+  );
+};
 
 export default function Login() {
-  const { colors, spacing, radii } = useTheme();
+  const { colors, spacing } = useTheme();
   const { login } = useAuth();
   const router = useRouter();
 
@@ -29,147 +48,197 @@ export default function Login() {
   const [password, setPassword] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [err, setErr] = useState<string | null>(null);
-  const [existence, setExistence] = useState<Existence>("unknown");
-  const [checked, setChecked] = useState(false);
 
   const emailOk = useMemo(() => isValidEmail(email), [email]);
 
-  const checkEmailExistence = async () => {
-    if (!emailOk) return;
-    
-    setExistence("checking");
-    setChecked(true);
-    try {
-      const out: any = await passwordResetStart({ email: email.trim().toLowerCase() });
-      
-      if (out?.challenge_id) {
-        setExistence("exists");
-      } else {
-        setExistence("absent");
-      }
-    } catch (e: any) {
-      const status = e?.status ?? e?.response?.status;
-      if (status === 404) {
-        setExistence("absent");
-      } else {
-        setExistence("unknown");
-        setChecked(false);
-      }
-    }
-  };
-
   const onSubmit = async () => {
-    if (!email.trim() || !password.trim()) {
-      return Alert.alert("Datos incompletos", "Ingresá tu email y contraseña.");
+    if (!emailOk || !password) {
+      return Alert.alert("Datos incompletos", "Por favor, ingresa un email válido y tu contraseña.");
     }
-    if (!emailOk) {
-      return Alert.alert("Email inválido", "Revisá el formato del correo.");
-    }
-
     setErr(null);
     setSubmitting(true);
     try {
       await login(email.trim().toLowerCase(), password);
-      // La redirección manual se elimina. El AuthProvider se encarga de esto.
     } catch (e: any) {
-      const errorMessage = e?.message ?? "No se pudo iniciar sesión";
-      setErr(errorMessage);
+      setErr(e?.message ?? "Email o contraseña incorrectos.");
     } finally {
       setSubmitting(false);
     }
   };
 
   return (
-    <Screen contentStyle={{ flexGrow: 1, padding: 16, gap: spacing.md, backgroundColor: colors.white }}>
-      {/* LOGO */}
-      <View style={{ height: 200, alignItems: "center", justifyContent: "center", marginBottom: spacing.md }}>
-        <Image 
-          source={require("../../../assets/logo.png")} 
-          style={{ 
-            width: 200, 
-            height: 180, 
-            resizeMode: "contain" 
-          }} 
-        />
-      </View>
-   
-      {/* Título */}
-      <Text style={{ fontSize: 24, fontWeight: "800", textAlign: "center", marginBottom: spacing.sm }}>
-        ¡Bienvenido!
-      </Text>
-
-      {/* Email */}
-      <FormField 
-        label="Correo Electrónico" 
-        rightAdornment={
-          emailOk && checked ? (
-            existence === "checking" ? (
-              <ActivityIndicator size="small" />
-            ) : existence === "exists" ? (
-              <CheckBadge />
-            ) : existence === "absent" ? (
-              <ErrorBadge />
-            ) : null
-          ) : null
-        }
+    <View style={[styles.root, { backgroundColor: colors.background }]}>
+      <WaveBackground />
+      <KeyboardAvoidingView
+        style={{ flex: 1 }}
+        behavior={Platform.OS === "ios" ? "padding" : "height"}
       >
-        <Input
-          placeholder="nombre@correo.com"
-          keyboardType="email-address"
-          autoCapitalize="none"
-          autoCorrect={false}
-          value={email}
-          onChangeText={(t) => {
-            setEmail(t.toLowerCase());
-            setExistence("unknown");
-            setChecked(false);
-          }}
-          onBlur={checkEmailExistence}
-        />
-      </FormField>
+        <ScrollView
+          contentContainerStyle={styles.container}
+          keyboardShouldPersistTaps="handled"
+        >
+          <Animated.View entering={FadeInUp.duration(800).delay(200)} style={styles.content}>
+            <Image 
+              source={require("../../../assets/logo.png")} 
+              style={styles.logo} 
+            />
+            <Text style={[styles.title, { color: colors.text }]}>¡Bienvenido!</Text>
+            <Text style={[styles.subtitle, { color: colors.secondary }]}>Ingresa tus credenciales para continuar</Text>
+            
+            <View style={styles.form}>
+              <View style={[styles.inputContainer, { borderColor: colors.border }]}>
+                  <Ionicons name="mail-outline" size={20} color={colors.secondary} style={styles.inputIcon} />
+                  <TextInput
+                      placeholder="nombre@correo.com"
+                      style={[styles.input, { color: colors.text }]}
+                      keyboardType="email-address"
+                      autoCapitalize="none"
+                      value={email}
+                      onChangeText={(t) => setEmail(t.toLowerCase())}
+                      placeholderTextColor={colors.gray400}
+                  />
+              </View>
 
-      {/* Password */}
-      <FormField label="Contraseña">
-        <PasswordInput placeholder="********" value={password} onChangeText={setPassword} />
-      </FormField>
+              <View style={[styles.inputContainer, { borderColor: colors.border }]}>
+                  <Ionicons name="lock-closed-outline" size={20} color={colors.secondary} style={styles.inputIcon} />
+                  <PasswordInput 
+                      placeholder="Contraseña"
+                      value={password}
+                      onChangeText={setPassword}
+                      style={[styles.input, { flex: 1, color: colors.text }]}
+                      placeholderTextColor={colors.gray400}
+                  />
+              </View>
 
-      {/* Olvidaste tu contraseña */}
-      <Pressable onPress={() => router.push("/forgot")}>
-        <Text style={{ color: colors.secondary, textAlign: "right", fontWeight: "600", fontSize: 12 }}>
-          ¿Olvidaste tu contraseña?
-        </Text>
-      </Pressable>
+              <Pressable onPress={() => router.push("/forgot")}>
+                <Text style={[styles.forgotPasswordText, { color: colors.tertiary }]}>¿Olvidaste tu contraseña?</Text>
+              </Pressable>
 
-      {/* Error */}
-      {err ? (
-        <View style={{ backgroundColor: "#FFE1E1", padding: spacing.sm, borderRadius: radii.sm }}>
-          <Text style={{ color: colors.error }}>{err}</Text>
-        </View>
-      ) : null}
+              {err && (
+                <View style={[styles.errorContainer, { backgroundColor: colors.error }]}>
+                  <Text style={[styles.errorText, { color: colors.white }]}>{err}</Text>
+                </View>
+              )}
 
-      {/* CTA principal */}
-      <Button
-        title="Iniciar Sesión"
-        onPress={onSubmit}
-        loading={submitting}
-        style={{ marginTop: 4, backgroundColor: colors.primary }}
-      />
+              <Button
+                title="Iniciar Sesión"
+                onPress={onSubmit}
+                loading={submitting}
+                style={[styles.submitButton, { backgroundColor: colors.primary }]}
+                textStyle={styles.submitButtonText}
+              />
+            </View>
 
-      {/* Registro */}
-      <View style={{ alignItems: "center", marginTop: spacing.sm }}>
-        <Text style={{ color: colors.gray600 }}>
-          ¿No tenés una cuenta?{" "}
-          <Pressable onPress={() => router.push("/register")}>
-            <Text style={{ color: colors.secondary, fontWeight: "700" }}>Registrate</Text>
-          </Pressable>
-        </Text>
-      </View>
-
-      {/* Divider + Google */}
-      <View style={{ marginTop: spacing.lg, gap: spacing.md }}>
-        <Divider />
-        <GoogleButton disabled />
-      </View>
-    </Screen>
+            <View style={styles.footer}>
+              <Text style={[styles.footerText, { color: colors.gray500 }]}>
+                ¿No tienes una cuenta?{" "}
+                <Text onPress={() => router.push("/register")} style={[styles.linkText, { color: colors.primary }]}>
+                  Regístrate
+                </Text>
+              </Text>
+            </View>
+          </Animated.View>
+        </ScrollView>
+      </KeyboardAvoidingView>
+    </View>
   );
 }
+
+const styles = StyleSheet.create({
+  root: {
+    flex: 1,
+  },
+  container: {
+    flexGrow: 1,
+    justifyContent: 'center',
+    padding: 24,
+  },
+  content: {
+    alignItems: 'center',
+    backgroundColor: 'white',
+    padding: 24,
+    borderRadius: 20,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.1,
+    shadowRadius: 20,
+    elevation: 10,
+  },
+  logo: {
+    width: 80,
+    height: 80,
+    resizeMode: 'contain',
+    marginBottom: 16,
+  },
+  title: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    textAlign: 'center',
+  },
+  subtitle: {
+    fontSize: 16,
+    textAlign: 'center',
+    marginBottom: 24,
+  },
+  form: {
+    width: '100%',
+  },
+  inputContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderRadius: 12,
+    borderWidth: 1,
+    paddingHorizontal: 16,
+    marginBottom: 16,
+    backgroundColor: '#F9F9F9',
+  },
+  inputIcon: {
+    marginRight: 12,
+  },
+  input: {
+    height: 50,
+    fontSize: 16,
+    flex: 1, // Permite que el input crezca
+  },
+  forgotPasswordText: {
+    textAlign: 'right',
+    fontWeight: '600',
+    fontSize: 14,
+    marginBottom: 24,
+  },
+  errorContainer: {
+    padding: 12,
+    borderRadius: 8,
+    marginBottom: 16,
+  },
+  errorText: {
+    fontWeight: '600',
+    textAlign: 'center',
+  },
+  submitButton: {
+    height: 50,
+    borderRadius: 12,
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 5,
+    elevation: 5,
+  },
+  submitButtonText: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: 'white',
+  },
+  footer: {
+    marginTop: 24,
+    alignItems: 'center',
+  },
+  footerText: {
+    fontSize: 14,
+  },
+  linkText: {
+    fontWeight: 'bold',
+  },
+});

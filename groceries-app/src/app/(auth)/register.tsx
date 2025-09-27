@@ -1,34 +1,35 @@
 import { Ionicons } from "@expo/vector-icons";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { useHeaderHeight } from "@react-navigation/elements";
 import { Link, useRouter } from "expo-router";
-import { useRef, useState } from "react";
 import { Controller, useForm } from "react-hook-form";
 import {
   Alert,
+  Dimensions,
   Image,
-  Keyboard,
   KeyboardAvoidingView,
-  NativeSyntheticEvent,
-  NativeTouchEvent,
   Platform,
-  Pressable,
   ScrollView,
-  Text,
+  StyleSheet,
   TextInput,
-  View,
+  View
 } from "react-native";
-import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
+import Animated, { FadeInUp } from "react-native-reanimated";
+import Svg, { Defs, Path, Stop, LinearGradient as SvgGradient } from "react-native-svg";
 import { z } from "zod";
-import { registerStart } from "../../api/endpoints";
-import { colors, spacing, styles } from "../../styles/register";
 
+import { registerStart } from "../../api/endpoints";
+import { Button } from "../../components/ui/Button";
+import { PasswordInput } from "../../components/ui/PasswordInput";
+import { Text } from "../../components/ui/Text";
+import { useTheme } from "../../providers/theme";
+
+// --- Esquema de validación con Zod ---
 const schema = z
   .object({
     firstName: z.string().min(2, "El nombre debe tener al menos 2 caracteres."),
     lastName: z.string().min(2, "El apellido debe tener al menos 2 caracteres."),
     email: z.string().email("Email inválido."),
-    password: z.string().min(6, "La contraseña debe tener 6 caracteres o más."),
+    password: z.string().min(6, "La contraseña debe tener 6+ caracteres."),
     confirmPassword: z.string(),
   })
   .refine((d) => d.password === d.confirmPassword, {
@@ -38,98 +39,67 @@ const schema = z
 
 type FormValues = z.infer<typeof schema>;
 
+// --- Componente para el fondo de ola ---
+const WaveBackground = () => {
+  const { colors } = useTheme();
+  const { width } = Dimensions.get('window');
+  const height = 200;
+
+  return (
+    <View style={{ position: 'absolute', top: 0, left: 0, right: 0, height }}>
+      <Svg height="100%" width="100%" viewBox={`0 0 ${width} ${height}`}>
+        <Defs>
+          <SvgGradient id="grad" x1="0%" y1="0%" x2="0%" y2="100%">
+            <Stop offset="0%" stopColor={colors.primary} stopOpacity="1" />
+            <Stop offset="100%" stopColor={colors.secondary} stopOpacity="1" />
+          </SvgGradient>
+        </Defs>
+        <Path
+          fill="url(#grad)"
+          d={`M0,0 L0,${height * 0.7} Q${width / 2},${height} ${width},${height * 0.7} L${width},0 Z`}
+        />
+      </Svg>
+    </View>
+  );
+};
+
+// --- Componente de Input controlado ---
+const ControlledInput = ({ control, name, placeholder, icon, ...props }) => {
+    const { colors } = useTheme();
+    return (
+        <Controller
+            control={control}
+            name={name}
+            render={({ field: { onChange, onBlur, value }, fieldState: { error } }) => (
+                <View>
+                    <View style={[styles.inputContainer, { borderColor: error ? colors.error : colors.border }]}>
+                        <Ionicons name={icon} size={20} color={colors.secondary} style={styles.inputIcon} />
+                        <TextInput
+                            value={value}
+                            onChangeText={onChange}
+                            onBlur={onBlur}
+                            placeholder={placeholder}
+                            style={[styles.input, { color: colors.text }]}
+                            placeholderTextColor={colors.gray400}
+                            {...props}
+                        />
+                    </View>
+                    {error && <Text style={styles.errorText}>{error.message}</Text>}
+                </View>
+            )}
+        />
+    )
+}
+
+// --- Pantalla Principal ---
 export default function RegisterScreen() {
+  const { colors } = useTheme();
   const router = useRouter();
-  const insets = useSafeAreaInsets();
-  const headerHeight = useHeaderHeight();
 
-  const [showPwd, setShowPwd] = useState(false);
-  const [showPwd2, setShowPwd2] = useState(false);
-
-  // refs para foco y detección de gesto en inputs
-  const firstRef = useRef<TextInput>(null);
-  const lastRef = useRef<TextInput>(null);
-  const emailRef = useRef<TextInput>(null);
-  const pwdRef = useRef<TextInput>(null);
-  const confirmRef = useRef<TextInput>(null);
-
-  // tracking del gesto vertical iniciado dentro del input
-  const touchStartY = useRef<number | null>(null);
-
-  const gestureHandlers = {
-    onTouchStart: (e: NativeSyntheticEvent<NativeTouchEvent>) => {
-      touchStartY.current = e.nativeEvent.pageY;
-    },
-    onTouchMove: (e: NativeSyntheticEvent<NativeTouchEvent>) => {
-      if (touchStartY.current == null) return;
-      const dy = Math.abs(e.nativeEvent.pageY - touchStartY.current);
-      if (dy > 6) {
-        // 👇 si el usuario está desplazando verticalmente, soltamos el focus
-        // para que el ScrollView tome el gesto y NO se mueva el placeholder
-        Keyboard.dismiss();
-        touchStartY.current = null;
-      }
-    },
-    onTouchEnd: () => {
-      touchStartY.current = null;
-    },
-  };
-
-  const {
-    control,
-    handleSubmit,
-    getValues,
-    watch,
-    formState: { errors, isSubmitting },
-  } = useForm<FormValues>({
+  const { control, handleSubmit } = useForm<FormValues>({
     resolver: zodResolver(schema),
-    defaultValues: {
-      firstName: "",
-      lastName: "",
-      email: "",
-      password: "",
-      confirmPassword: "",
-    },
-    mode: "onChange",
-    reValidateMode: "onChange",
+    defaultValues: { firstName: "", lastName: "", email: "", password: "", confirmPassword: "" },
   });
-
-  const pwdVal = watch("password");
-  const confirmVal = watch("confirmPassword");
-
-  const onTogglePwd = () => {
-    if (!pwdVal) {
-      pwdRef.current?.focus();
-      return;
-    }
-    setShowPwd((s) => !s);
-  };
-  const onTogglePwd2 = () => {
-    if (!confirmVal) {
-      confirmRef.current?.focus();
-      return;
-    }
-    setShowPwd2((s) => !s);
-  };
-
-  const attemptSubmit = async () => {
-    if (isSubmitting) return;
-    const v = getValues();
-
-    if (!v.firstName.trim() || !v.lastName.trim() || !v.email.trim() || !v.password.trim() || !v.confirmPassword.trim()) {
-      Alert.alert("Datos incompletos", "Completá todos los campos para continuar.");
-      return;
-    }
-    if (v.password.length < 6) {
-      Alert.alert("Contraseña muy corta", "La contraseña debe tener 6 caracteres o más.");
-      return;
-    }
-    if (v.password !== v.confirmPassword) {
-      Alert.alert("Contraseñas no coinciden", "Ambas contraseñas deben ser iguales.");
-      return;
-    }
-    await handleSubmit(onSubmit)();
-  };
 
   const onSubmit = async (data: FormValues) => {
     try {
@@ -144,196 +114,178 @@ export default function RegisterScreen() {
         params: { mode: "register", challenge_id: out.challenge_id, email: out.email },
       });
     } catch (e: any) {
-      const status = e?.status ?? e?.response?.status;
-      const serverMsg = e?.data?.detail || e?.data?.message || e?.message || "No se pudo iniciar el registro.";
-      if (status === 400) Alert.alert("Email ya registrado", String(serverMsg));
-      else Alert.alert("Error de registro", String(serverMsg));
+      const msg = e?.message || "No se pudo iniciar el registro.";
+      Alert.alert("Error de registro", String(msg));
     }
   };
 
   return (
-    <SafeAreaView style={{ flex: 1 }} edges={["top", "bottom"]}>
-      <KeyboardAvoidingView
-        style={{ flex: 1 }}
-        behavior={Platform.OS === "ios" ? "padding" : "height"}
-        keyboardVerticalOffset={Platform.OS === "ios" ? headerHeight : 0}
-      >
-        <ScrollView
-          keyboardShouldPersistTaps="always"
-          keyboardDismissMode="on-drag"
-          contentInsetAdjustmentBehavior="always"
-          contentContainerStyle={{ paddingBottom: insets.bottom + spacing.md }}
-        >
-          {/* NO usar flex:1 aquí, así el ScrollView SIEMPRE scrollea */}
-          <View style={[styles.container, { flex: 0 }]}>
-            {/* LOGO */}
-            <View style={{ height: 120, alignItems: "center", justifyContent: "center", marginBottom: spacing.md }}>
-              <Image 
-                source={require("../../../assets/logo.png")} 
-                style={{ 
-                  width: 150, 
-                  height: 100, 
-                  resizeMode: "contain" 
-                }} 
-              />
-            </View>
-
-            <Text style={styles.title}>¡Cree su cuenta!</Text>
-
-            {/* Nombre */}
-            <Text style={styles.label}>Nombre</Text>
-            <Controller
-              control={control}
-              name="firstName"
-              render={({ field: { onChange, onBlur, value } }) => (
-                <TextInput
-                  ref={firstRef}
-                  value={value}
-                  onChangeText={onChange}
-                  onBlur={onBlur}
-                  placeholder="Juan"
-                  style={styles.input}
-                  returnKeyType="next"
-                  scrollEnabled={false}
-                  {...gestureHandlers}
-                />
-              )}
-            />
-            {!!errors.firstName && <Text style={styles.errorText}>{errors.firstName.message}</Text>}
-
-            {/* Apellido */}
-            <Text style={styles.label}>Apellido</Text>
-            <Controller
-              control={control}
-              name="lastName"
-              render={({ field: { onChange, onBlur, value } }) => (
-                <TextInput
-                  ref={lastRef}
-                  value={value}
-                  onChangeText={onChange}
-                  onBlur={onBlur}
-                  placeholder="Pérez"
-                  style={styles.input}
-                  returnKeyType="next"
-                  scrollEnabled={false}
-                  {...gestureHandlers}
-                />
-              )}
-            />
-            {!!errors.lastName && <Text style={styles.errorText}>{errors.lastName.message}</Text>}
-
-            {/* Email */}
-            <Text style={styles.label}>Ingrese su Correo Electrónico</Text>
-            <Controller
-              control={control}
-              name="email"
-              render={({ field: { onChange, onBlur, value } }) => (
-                <TextInput
-                  ref={emailRef}
-                  value={value}
-                  onChangeText={(t) => onChange(t.toLowerCase())}
-                  onBlur={onBlur}
-                  placeholder="tu@email.com"
-                  autoCapitalize="none"
-                  autoCorrect={false}
-                  keyboardType="email-address"
-                  style={styles.input}
-                  returnKeyType="next"
-                  scrollEnabled={false}
-                  {...gestureHandlers}
-                />
-              )}
-            />
-            {!!errors.email && <Text style={styles.errorText}>{errors.email.message}</Text>}
-
-            {/* Contraseña */}
-            <Text style={styles.label}>Ingrese su Contraseña</Text>
-            <View style={{ position: "relative" }}>
+    <View style={[styles.root, { backgroundColor: colors.background }]}>
+      <WaveBackground />
+      <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === "ios" ? "padding" : "height"}>
+        <ScrollView contentContainerStyle={styles.container} keyboardShouldPersistTaps="handled">
+          <Animated.View entering={FadeInUp.duration(800).delay(200)} style={styles.content}>
+            <Image source={require("../../../assets/logo.png")} style={styles.logo} />
+            <Text style={[styles.title, { color: colors.text }]}>Crea tu cuenta</Text>
+            <Text style={[styles.subtitle, { color: colors.secondary }]}>Completa tus datos para empezar</Text>
+            
+            <View style={styles.form}>
+              <ControlledInput control={control} name="firstName" placeholder="Nombre" icon="person-outline" />
+              <ControlledInput control={control} name="lastName" placeholder="Apellido" icon="person-outline" />
+              <ControlledInput control={control} name="email" placeholder="Email" icon="mail-outline" keyboardType="email-address" autoCapitalize="none" />
+              
               <Controller
                 control={control}
                 name="password"
-                render={({ field: { onChange, onBlur, value } }) => (
-                  <TextInput
-                    ref={pwdRef}
-                    value={value}
-                    onChangeText={onChange}
-                    onBlur={onBlur}
-                    placeholder="********"
-                    secureTextEntry={!showPwd}
-                    autoCapitalize="none"
-                    style={[
-                      styles.input,
-                      { paddingRight: 40 },
-                      Platform.OS === "android" && { textAlignVertical: "center", includeFontPadding: false },
-                    ]}
-                    returnKeyType="next"
-                    scrollEnabled={false}
-                    {...gestureHandlers}
-                  />
+                render={({ field: { onChange, onBlur, value }, fieldState: { error } }) => (
+                    <View>
+                        <View style={[styles.inputContainer, { borderColor: error ? colors.error : colors.border }]}>
+                            <Ionicons name="lock-closed-outline" size={20} color={colors.secondary} style={styles.inputIcon} />
+                            <PasswordInput
+                                value={value}
+                                onChangeText={onChange}
+                                onBlur={onBlur}
+                                placeholder="Contraseña"
+                                style={[styles.input, { flex: 1, color: colors.text }]}
+                                placeholderTextColor={colors.gray400}
+                            />
+                        </View>
+                        {error && <Text style={styles.errorText}>{error.message}</Text>}
+                    </View>
                 )}
               />
-              <Pressable
-                onPress={onTogglePwd}
-                style={[styles.eye, { right: 12 }]}
-                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-              >
-                <Ionicons name={showPwd ? "eye-off-outline" : "eye-outline"} size={20} color={colors.gray600} />
-              </Pressable>
-            </View>
-            {!!errors.password && <Text style={styles.errorText}>{errors.password.message}</Text>}
-
-            {/* Confirmación */}
-            <Text style={styles.label}>Repita su Contraseña</Text>
-            <View style={{ position: "relative" }}>
               <Controller
                 control={control}
                 name="confirmPassword"
-                render={({ field: { onChange, onBlur, value } }) => (
-                  <TextInput
-                    ref={confirmRef}
-                    value={value}
-                    onChangeText={onChange}
-                    onBlur={onBlur}
-                    placeholder="********"
-                    secureTextEntry={!showPwd2}
-                    autoCapitalize="none"
-                    style={[
-                      styles.input,
-                      { paddingRight: 40 },
-                      Platform.OS === "android" && { textAlignVertical: "center", includeFontPadding: false },
-                    ]}
-                    returnKeyType="done"
-                    scrollEnabled={false}
-                    {...gestureHandlers}
-                  />
+                render={({ field: { onChange, onBlur, value }, fieldState: { error } }) => (
+                    <View>
+                        <View style={[styles.inputContainer, { borderColor: error ? colors.error : colors.border }]}>
+                            <Ionicons name="lock-closed-outline" size={20} color={colors.secondary} style={styles.inputIcon} />
+                            <PasswordInput
+                                value={value}
+                                onChangeText={onChange}
+                                onBlur={onBlur}
+                                placeholder="Confirmar contraseña"
+                                style={[styles.input, { flex: 1, color: colors.text }]}
+                                placeholderTextColor={colors.gray400}
+                            />
+                        </View>
+                        {error && <Text style={styles.errorText}>{error.message}</Text>}
+                    </View>
                 )}
               />
-              <Pressable
-                onPress={onTogglePwd2}
-                style={[styles.eye, { right: 12 }]}
-                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-              >
-                <Ionicons name={showPwd2 ? "eye-off-outline" : "eye-outline"} size={20} color={colors.gray600} />
-              </Pressable>
+
+              <Button
+                title="Crear Cuenta"
+                onPress={handleSubmit(onSubmit)}
+                style={[styles.submitButton, { backgroundColor: colors.primary }]}
+                textStyle={styles.submitButtonText}
+              />
             </View>
-            {!!errors.confirmPassword && <Text style={styles.errorText}>{errors.confirmPassword.message}</Text>}
 
-            {/* CTA */}
-            <Pressable onPress={attemptSubmit} style={styles.btnPrimary}>
-              <Text style={styles.btnPrimaryText}>{isSubmitting ? "Cargando..." : "Registrate"}</Text>
-            </Pressable>
-
-            <View style={{ alignItems: "center", marginTop: spacing.sm }}>
-              <Text style={{ color: colors.gray600 }}>
-                ¿Ya tenés una cuenta?{" "}
-                <Link href="/login" style={{ color: colors.secondary, fontWeight: "700" }}>
-                  Inicia sesión
+            <View style={styles.footer}>
+              <Text style={[styles.footerText, { color: colors.secondary }]}>
+                ¿Ya tienes una cuenta?{" "}
+                <Link href="/login" asChild>
+                    <Text style={[styles.linkText, { color: colors.primary }]}>
+                        Inicia sesión
+                    </Text>
                 </Link>
               </Text>
             </View>
-          </View>
+          </Animated.View>
         </ScrollView>
       </KeyboardAvoidingView>
-    </SafeAreaView>
+    </View>
   );
 }
+
+// --- ESTILOS VISUALES ---
+const styles = StyleSheet.create({
+  root: { flex: 1 },
+  container: {
+    flexGrow: 1,
+    justifyContent: 'center',
+    padding: 24,
+  },
+  content: {
+    alignItems: 'center',
+    backgroundColor: 'white',
+    padding: 24,
+    borderRadius: 20,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.1,
+    shadowRadius: 20,
+    elevation: 10,
+  },
+  logo: {
+    width: 60,
+    height: 60,
+    resizeMode: 'contain',
+    marginBottom: 16,
+  },
+  title: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    textAlign: 'center',
+  },
+  subtitle: {
+    fontSize: 16,
+    textAlign: 'center',
+    marginBottom: 24,
+  },
+  form: {
+    width: '100%',
+  },
+  inputContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderRadius: 12,
+    borderWidth: 1,
+    paddingHorizontal: 16,
+    backgroundColor: '#F9F9F9',
+    marginBottom: 4, // Espacio reducido para que el error quede cerca
+  },
+  inputIcon: {
+    marginRight: 12,
+  },
+  input: {
+    height: 50,
+    fontSize: 16,
+    flex: 1,
+  },
+  errorText: {
+    color: 'red',
+    fontSize: 12,
+    marginBottom: 12, // Espacio después del error
+    paddingLeft: 4,
+  },
+  submitButton: {
+    height: 50,
+    borderRadius: 12,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginTop: 16,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 5,
+    elevation: 5,
+  },
+  submitButtonText: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: 'white',
+  },
+  footer: {
+    marginTop: 24,
+    alignItems: 'center',
+  },
+  footerText: {
+    fontSize: 14,
+  },
+  linkText: {
+    fontWeight: 'bold',
+  },
+});

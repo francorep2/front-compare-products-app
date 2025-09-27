@@ -3,7 +3,7 @@ import { getToken, setToken } from "../api/clients";
 import { apiLogin, me } from "../api/endpoints";
 import type { MeOut } from "../api/types";
 
-// 1. Definimos el tipo completo para el contexto
+// 1. AÑADIMOS LAS PROPIEDADES DEL MODAL AL TIPO
 type AuthContextType = {
   user: MeOut | null;
   isLoading: boolean;
@@ -44,7 +44,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const data = await me();
     setUser(data);
     // 3. ACTIVAMOS LA BANDERA AL INICIAR SESIÓN
-    setShowDisclaimerOnLoad(true);
+    setShowDisclaimerOnLoad(true); 
   };
 
   const logout = async () => {
@@ -59,7 +59,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   return (
     <AuthContext.Provider 
-      // 5. EXPONEMOS LOS NUEVOS VALORES
+      // 5. EXPONEMOS LOS NUEVOS VALORES EN EL CONTEXTO
       value={{ user, isLoading, login, logout, showDisclaimerOnLoad, clearDisclaimerFlag }}
     >
       {children}
