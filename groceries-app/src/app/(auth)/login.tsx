@@ -83,7 +83,7 @@ export default function Login() {
               style={styles.logo} 
             />
             <Text style={[styles.title, { color: colors.text }]}>¡Bienvenido!</Text>
-            <Text style={[styles.subtitle, { color: colors.secondary }]}>Ingresa tus credenciales para continuar</Text>
+            <Text style={[styles.subtitle, { color: colors.gray500 }]}>Ingresa tus credenciales para continuar</Text>
             
             <View style={styles.form}>
               <View style={[styles.inputContainer, { borderColor: colors.border }]}>
@@ -171,7 +171,7 @@ const styles = StyleSheet.create({
     marginBottom: 16,
   },
   title: {
-    fontSize: 24,
+    fontSize: 34,
     fontWeight: 'bold',
     textAlign: 'center',
   },

@@ -1,38 +1,81 @@
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
-import { useHeaderHeight } from "@react-navigation/elements";
-import { useFocusEffect } from "@react-navigation/native";
-import { useLocalSearchParams, useRouter } from "expo-router";
+import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
+  Dimensions,
+  FlatList,
   Image,
   KeyboardAvoidingView,
   Linking,
   Platform,
   Pressable,
   RefreshControl,
-  ScrollView,
+  StyleSheet,
+  Text,
   TextInput,
   View,
 } from "react-native";
-import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
+import Animated, { FadeInUp } from "react-native-reanimated";
+import { SafeAreaView } from "react-native-safe-area-context";
+import Svg, { Defs, Path, Stop, LinearGradient as SvgGradient } from "react-native-svg";
 import { mapSearchResponse, useDebouncedValue } from "../../../utils/search";
-import {
-  getScrapeSources,
-  searchAll,
-  searchAllBarcode,
-  sourcesToEnabled,
-} from "../../api/endpoints";
+
+import { capitalize } from "../../../utils/helpers";
+import { getScrapeSources, searchAll, searchAllBarcode, sourcesToEnabled } from "../../api/endpoints";
 import { ScrapeSources, SearchHit, SearchRawResponse } from "../../api/types";
-import { Text } from "../../components/ui/Text";
 import { useTheme } from "../../providers/theme";
 
-const BARCODE_RE = /^(?:\d{7,14}|\d{18})$/; // EAN/GTIN típicos
+const BARCODE_RE = /^(?:\d{7,14}|\d{18})$/;
+
+const WaveBackground = () => {
+  const { colors } = useTheme();
+  const { width } = Dimensions.get('window');
+  const height = 180;
+
+  return (
+    <View style={{ position: 'absolute', top: 0, left: 0, right: 0, height }}>
+      <Svg height="100%" width="100%" viewBox={`0 0 ${width} ${height}`}>
+        <Defs>
+          <SvgGradient id="grad" x1="0%" y1="0%" x2="0%" y2="100%">
+            <Stop offset="0%" stopColor={colors.primary} stopOpacity="1" />
+            <Stop offset="100%" stopColor={colors.secondary} stopOpacity="1" />
+          </SvgGradient>
+        </Defs>
+        <Path fill="url(#grad)" d={`M0,0 L0,${height * 0.6} Q${width / 2},${height} ${width},${height * 0.6} L${width},0 Z`} />
+      </Svg>
+    </View>
+  );
+};
+
+const ResultCard = ({ item, openProduct }: { item: SearchHit, openProduct: (url?: string) => void }) => {
+  const { colors } = useTheme();
+  return (
+    <Pressable 
+      onPress={() => openProduct(item.url)}
+      style={[styles.resultCard, { backgroundColor: colors.white, borderColor: colors.border }]}
+    >
+      <Image source={{ uri: item.image_url }} style={styles.productImage} />
+      <View style={styles.productInfo}>
+        <Text numberOfLines={2} style={[styles.productName, { color: colors.text }]}>{item.name}</Text>
+        <View style={styles.priceRow}>
+          <Text style={[styles.productPrice, { color: colors.primary }]}>
+            ${Number(item.price ?? 0).toLocaleString("es-AR")}
+          </Text>
+          {item.promotion && (
+            <View style={[styles.promoBadge, { backgroundColor: colors.white }]}>
+              <Text style={[styles.promoText, { color: colors.secondary }]}>{item.promotion}</Text>
+            </View>
+          )}
+        </View>
+        <Text style={[styles.storeText, { color: colors.tertiary }]}>{capitalize(item.store)}</Text>
+      </View>
+    </Pressable>
+  );
+};
 
 export default function SearchScreen() {
-  const { colors, spacing, radii } = useTheme();
-  const insets = useSafeAreaInsets();
-  const headerH = useHeaderHeight();
+  const { colors, spacing } = useTheme();
   const router = useRouter();
   const params = useLocalSearchParams<{ scanned?: string }>();
 
@@ -47,7 +90,6 @@ export default function SearchScreen() {
   const [loadingSources, setLoadingSources] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
-  // cargar /search/config
   const loadSources = useCallback(async () => {
     setLoadingSources(true);
     try {
@@ -60,51 +102,35 @@ export default function SearchScreen() {
     }
   }, []);
 
-  // Montaje inicial
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      if (!cancelled) await loadSources();
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [loadSources]);
-
-  // Re-cargar al volver a enfocar
   useFocusEffect(
     useCallback(() => {
       loadSources();
     }, [loadSources])
   );
 
-  // Pull-to-refresh
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
     await loadSources();
     setRefreshing(false);
   }, [loadSources]);
 
-  // Derivar enabled[] desde sources
   const enabled = useMemo(() => {
     if (!sources) return [];
     return sourcesToEnabled(sources);
   }, [sources]);
 
-  // Si volvemos del scanner con ?scanned=...
   useEffect(() => {
     const s = (params?.scanned ?? "").toString();
     if (s) setQ(s);
   }, [params?.scanned]);
 
-  // Buscar cuando cambie la query o la selección
   useEffect(() => {
     let cancelled = false;
     async function run() {
       setErr(null);
       if (loadingSources || !sources) return;
 
-      if (!dq || dq.trim().length < 2) {
+      if (!dq || dq.trim().length < 3) {
         setResults([]);
         return;
       }
@@ -127,279 +153,190 @@ export default function SearchScreen() {
       }
     }
     run();
-    return () => {
-      cancelled = true;
-    };
+    return () => { cancelled = true; };
   }, [dq, enabled, loadingSources, sources]);
 
   const clear = () => setQ("");
+  const openProduct = async (url?: string) => { if (url) await Linking.openURL(url); };
 
-  const openProduct = async (url?: string) => {
-    if (!url) return;
-    try {
-      const ok = await Linking.canOpenURL(url);
-      if (ok) await Linking.openURL(url);
-      else await Linking.openURL(url);
-    } catch {}
+  const renderListStatus = () => {
+    if (loading || loadingSources) {
+      return <ActivityIndicator size="large" color={colors.primary} style={{ marginTop: 40 }} />;
+    }
+    if (err) {
+      return <Text style={[styles.statusText, { color: colors.error }]}>{err}</Text>;
+    }
+    if (dq.trim().length >= 3 && results.length === 0) {
+      return <Text style={[styles.statusText, { color: colors.gray400 }]}>No encontramos resultados para "{dq}".</Text>;
+    }
+    return null;
   };
 
   return (
-    <SafeAreaView
-      style={{ flex: 1, backgroundColor: colors.white }}
-      edges={["top", "bottom"]}
-    >
-      <KeyboardAvoidingView
-        style={{ flex: 1 }}
-        behavior={Platform.OS === "ios" ? "padding" : "height"}
-        keyboardVerticalOffset={Platform.OS === "ios" ? headerH : 0}
-      >
-        <ScrollView
-          keyboardShouldPersistTaps="handled"
-          contentContainerStyle={{
-            padding: spacing.md,
-            paddingBottom: insets.bottom + 120,
-          }}
-          refreshControl={
-            <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
-          }
+    <View style={[styles.root, { backgroundColor: colors.background }]}>
+      <WaveBackground />
+      <SafeAreaView style={styles.safeArea} edges={["top", "bottom"]}>
+        <KeyboardAvoidingView
+          style={{ flex: 1 }}
+          behavior={Platform.OS === "ios" ? "padding" : "height"}
         >
-          <Text
-            style={{
-              fontSize: 30,
-              fontWeight: "800",
-              color: colors.secondary,
-              marginBottom: spacing.sm,
-            }}
-          >
-            ¿Qué producto estás buscando?
-          </Text>
-
-          {/* Input */}
-          <View
-            style={{
-              height: 48,
-              borderRadius: radii.md,
-              backgroundColor: "#FAFBFC",
-              borderWidth: 1,
-              borderColor: "#E9EEF5",
-              paddingHorizontal: 12,
-              flexDirection: "row",
-              alignItems: "center",
-            }}
-          >
-            <Ionicons
-              name="search-outline"
-              size={20}
-              color={colors.secondary}
-              style={{ marginRight: 8 }}
-            />
-            <TextInput
-              value={q}
-              onChangeText={setQ}
-              placeholder="Coca cola 500ml"
-              returnKeyType="search"
-              style={{ flex: 1, paddingVertical: 0, fontSize: 16 }}
-            />
-            {q ? (
-              <Pressable
-                onPress={clear}
-                hitSlop={10}
-                accessibilityLabel="Limpiar búsqueda"
-              >
-                <Ionicons
-                  name="close-circle"
-                  size={18}
-                  color={colors.gray400}
+          {/* --- ENCABEZADO FIJO --- */}
+          <Animated.View entering={FadeInUp.duration(600)} style={{ paddingHorizontal: spacing.md }}>
+            <View style={{ paddingTop: 60 }}/>
+            <View style={[styles.contentCard, { backgroundColor: colors.white }]}>
+              <Text style={[styles.title, { color: colors.primary }]}>Busca cualquier producto</Text>
+              <Text style={[styles.subtitle, { color: colors.gray700 }]}>Encuentra el mejor precio.</Text>
+              <View style={[styles.searchBar, { backgroundColor: colors.background, borderColor: colors.border }]}>
+                <Ionicons name="search-outline" size={22} color={colors.primary} />
+                <TextInput
+                  value={q}
+                  onChangeText={setQ}
+                  placeholder="Leche, pan, galletitas..."
+                  placeholderTextColor={colors.gray400}
+                  returnKeyType="search"
+                  style={[styles.input, { color: colors.text }]}
                 />
+                {q ? (
+                  <Pressable onPress={clear} hitSlop={10}>
+                    <Ionicons name="close-circle" size={20} color={colors.gray200} />
+                  </Pressable>
+                ) : null}
+              </View>
+              <Pressable style={styles.scanButton} onPress={() => router.push("/(main)/scanner")}>
+                <MaterialCommunityIcons name="barcode-scan" size={20} color={colors.tertiary} />
+                <Text style={[styles.scanButtonText, { color: colors.tertiary }]}>Escanear código de barras</Text>
               </Pressable>
-            ) : null}
-          </View>
-
-          {/* Escanear */}
-          <Pressable
-            onPress={() => router.push("/(main)/scanner")}
-            style={{
-              flexDirection: "row",
-              alignItems: "center",
-              gap: 10,
-              paddingVertical: spacing.md,
-            }}
-          >
-            <MaterialCommunityIcons
-              name="barcode-scan"
-              size={22}
-              color={colors.tertiary}
-            />
-            <Text style={{ color: colors.tertiary, fontWeight: "700" }}>
-              Escaneá el código de barras
-            </Text>
-          </Pressable>
-
-          <View
-            style={{
-              height: 1,
-              backgroundColor: "#E9EEF5",
-              opacity: 0.7,
-              marginBottom: spacing.md,
-            }}
+            </View>
+          </Animated.View>
+          
+          <FlatList
+            style={{ flex: 1, marginTop: spacing.md }}
+            data={results}
+            keyExtractor={(item, index) => `${item.store}-${item.url}-${index}`}
+            contentContainerStyle={styles.listContainer}
+            ListFooterComponent={renderListStatus}
+            renderItem={({ item, index }) => (
+              <Animated.View entering={FadeInUp.duration(600).delay(index * 100)}>
+                <ResultCard item={item} openProduct={openProduct} />
+              </Animated.View>
+            )}
+            refreshControl={
+              <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary}/>
+            }
+            keyboardShouldPersistTaps="handled"
           />
-
-          {/* Estados */}
-          {(loadingSources || loading) && (
-            <View style={{ paddingVertical: spacing.md, alignItems: "center" }}>
-              <ActivityIndicator />
-              {loadingSources && (
-                <Text style={{ color: colors.gray500, marginTop: 6 }}>
-                  Cargando configuración de supermercados…
-                </Text>
-              )}
-            </View>
-          )}
-
-          {err && (
-            <View
-              style={{
-                backgroundColor: "#FFF2F2",
-                borderColor: "#FFD6D6",
-                borderWidth: 1,
-                padding: spacing.md,
-                borderRadius: radii.md,
-                marginBottom: spacing.md,
-              }}
-            >
-              <Text style={{ color: colors.error, fontWeight: "700" }}>
-                Ocurrió un error
-              </Text>
-              <Text style={{ color: colors.secondary }}>{err}</Text>
-            </View>
-          )}
-
-          {!loading && !loadingSources && !err && dq && results.length === 0 && (
-            <Text style={{ color: colors.gray500 }}>
-              No encontramos resultados para “{dq}”.
-            </Text>
-          )}
-
-          {/* Resultados */}
-          <View style={{ gap: 10 }}>
-            {results
-            .filter((h) => !!h.name && !!h.url) 
-            .map((h, i) => (
-              <Pressable
-                key={`${h.store}-${h.url}-${i}`}
-                onPress={() => openProduct(h.url)}
-                accessibilityRole="link"
-                style={{
-                  flexDirection: "row",
-                  alignItems: "center",
-                  padding: 10,
-                  borderWidth: 1,
-                  borderColor: "#E9EEF5",
-                  borderRadius: radii.md,
-                  backgroundColor: "#FFFFFF",
-                  gap: 12,
-                }}
-              >
-                <View
-                  style={{
-                    width: 56,
-                    height: 56,
-                    borderRadius: 8,
-                    overflow: "hidden",
-                    backgroundColor: "#F4F6F8",
-                    alignItems: "center",
-                    justifyContent: "center",
-                  }}
-                >
-                  {h.image_url ? (
-                    <Image
-                      source={{ uri: h.image_url }}
-                      style={{ width: "100%", height: "100%" }}
-                    />
-                  ) : (
-                    <Ionicons
-                      name="image-outline"
-                      size={22}
-                      color={colors.gray400}
-                    />
-                  )}
-                </View>
-
-                <View style={{ flex: 1 }}>
-                  <Text
-                    numberOfLines={2}
-                    style={{ fontWeight: "700", color: colors.secondary }}
-                  >
-                    {h.name}
-                  </Text>
-                  <View
-                    style={{
-                      flexDirection: "row",
-                      alignItems: "center",
-                      gap: 8,
-                      marginTop: 2,
-                      flexWrap: "wrap",
-                    }}
-                  >
-                    <Text style={{ color: colors.primary, fontWeight: "900" }}>
-                      ${Number(h.price ?? 0).toLocaleString("es-AR")}
-                    </Text>
-
-                  {(h.promotion?.trim()?.length ?? 0) > 0 ? (
-                    <View
-                      style={{
-                        paddingHorizontal: 8,
-                        paddingVertical: 2,
-                        borderRadius: 999,
-                        backgroundColor: "#FFDD61", // Advertencia
-                      }}
-                    >
-                      <Text
-                        style={{
-                          fontSize: 11,
-                          fontWeight: "800",
-                          color: "#4A5899", // Terciario
-                        }}
-                        numberOfLines={1}
-                      >
-                        {h.promotion!.trim()}
-                      </Text>
-                    </View>
-                  ) : null}
-                    {/* Store chip */}
-                    <View
-                      style={{
-                        paddingHorizontal: 8,
-                        paddingVertical: 2,
-                        borderRadius: 999,
-                        backgroundColor: "#FAFBFC",
-                        borderWidth: 1,
-                        borderColor: "#E9EEF5",
-                      }}
-                    >
-                      <Text style={{ fontSize: 12, color: colors.gray600 }}>
-                        {h.store}
-                      </Text>
-                    </View>
-                  </View>
-
-                  {!!h.barcode && (
-                    <Text
-                      style={{
-                        color: colors.gray500,
-                        fontSize: 12,
-                        marginTop: 2,
-                      }}
-                    >
-                      EAN: {h.barcode}
-                    </Text>
-                  )}
-                </View>
-              </Pressable>
-            ))}
-          </View>
-        </ScrollView>
-      </KeyboardAvoidingView>
-    </SafeAreaView>
+        </KeyboardAvoidingView>
+      </SafeAreaView>
+    </View>
   );
 }
+
+const styles = StyleSheet.create({
+  root: { flex: 1 },
+  safeArea: { flex: 1 },
+  listContainer: { 
+    paddingHorizontal: 16,
+    paddingBottom: 48 
+  },
+  contentCard: {
+    borderRadius: 20,
+    padding: 20,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.1,
+    shadowRadius: 20,
+    elevation: 10,
+  },
+  title: {
+    fontSize: 24,
+    fontWeight: "bold",
+    textAlign: 'center',
+  },
+  subtitle: {
+    fontSize: 16,
+    textAlign: 'center',
+    marginBottom: 20,
+    marginTop: 4,
+  },
+  searchBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderRadius: 12,
+    paddingHorizontal: 16,
+    height: 52,
+    borderWidth: 1,
+  },
+  input: {
+    flex: 1,
+    paddingHorizontal: 12,
+    fontSize: 16,
+  },
+  scanButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingTop: 16,
+  },
+  scanButtonText: {
+    fontWeight: '600',
+    fontSize: 14,
+  },
+  statusText: {
+    textAlign: 'center',
+    fontSize: 16,
+    padding: 20,
+  },
+  resultCard: {
+    flexDirection: 'row',
+    padding: 12,
+    borderRadius: 16,
+    borderWidth: 1,
+    marginBottom: 12,
+    backgroundColor: 'white',
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  productImage: {
+    width: 70,
+    height: 70,
+    borderRadius: 12,
+    backgroundColor: '#F0F0F0',
+  },
+  productInfo: {
+    flex: 1,
+    marginLeft: 12,
+    justifyContent: 'center',
+  },
+  productName: {
+    fontWeight: '600',
+    fontSize: 15,
+  },
+  priceRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginTop: 4,
+    flexWrap: 'wrap',
+  },
+  productPrice: {
+    fontWeight: 'bold',
+    fontSize: 16,
+  },
+  promoBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 6,
+  },
+  promoText: {
+    fontSize: 11,
+    fontWeight: 'bold',
+  },
+  storeText: {
+    fontSize: 12,
+    marginTop: 4,
+  },
+});

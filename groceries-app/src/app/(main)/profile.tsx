@@ -1,13 +1,12 @@
 import { useRouter } from "expo-router";
 import { useEffect, useMemo, useState } from "react";
-import { ActivityIndicator, Alert, Image, Pressable, ScrollView, StyleSheet, Switch, View } from "react-native";
-import Animated, { FadeIn, FadeOut } from "react-native-reanimated"; // FadeIn y FadeOut para la animación
-import { SafeAreaView } from "react-native-safe-area-context";
+import { ActivityIndicator, Alert, Image, Pressable, ScrollView, StyleSheet, Switch, Text, View } from "react-native";
+import Animated, { FadeIn, FadeOut } from "react-native-reanimated";
+import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { Ionicons } from "@expo/vector-icons";
 import { getScrapeSources, setScrapeSources } from "../../api/endpoints";
 import type { ScrapeSources } from "../../api/types";
-import { Text } from "../../components/ui/Text";
 import { useAuth } from "../../providers/auth";
 import { useTheme } from "../../providers/theme";
 
@@ -36,6 +35,7 @@ export default function ProfileScreen() {
   const { colors, spacing } = useTheme();
   const router = useRouter();
   const { user, logout } = useAuth();
+  const insets = useSafeAreaInsets();
 
   const displayName = capitalize(user?.first_name?.trim() || user?.email.split("@")[0] || "Usuario");
   const userInitials = getInitials(user?.first_name || user?.email);
@@ -104,7 +104,12 @@ export default function ProfileScreen() {
 
   return (
     <SafeAreaView style={[styles.safeArea, { backgroundColor: colors.background }]} edges={["top"]}>
-      <ScrollView contentContainerStyle={{ padding: spacing.md, paddingBottom: spacing.lg }}>
+      <ScrollView 
+        contentContainerStyle={[
+            styles.container,
+            { paddingBottom: insets.bottom + spacing.lg }
+        ]}
+      >
         
         <Animated.View entering={FadeIn.duration(400)} style={[styles.profileHeader, { backgroundColor: colors.primary }]}>
             <View style={[styles.avatar, { backgroundColor: colors.secondary }]}>
@@ -118,13 +123,13 @@ export default function ProfileScreen() {
         </Animated.View>
 
         <Animated.View entering={FadeIn.duration(400).delay(200)}>
-            <Text style={[styles.sectionTitle, { color: colors.secondary }]}>
+            <Text style={[styles.sectionTitle, { color: colors.textSecondary }]}>
                 Supermercados Habilitados
             </Text>
             <View style={[styles.card, { backgroundColor: colors.white }]}>
                 {loading ? <ActivityIndicator style={{ padding: spacing.md }}/> : 
                     items.map((it, index) => (
-                        <View key={it.key} style={[styles.rowContainer, index === items.length - 1 && { borderBottomWidth: 0 }]}>
+                        <View key={it.key} style={[styles.rowContainer, { borderBottomColor: colors.border }, index === items.length - 1 && { borderBottomWidth: 0 }]}>
                             <Pressable onPress={() => toggle(it.key)} style={styles.settingsRow}>
                                 <View style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
                                     <Image source={it.icon} resizeMode="contain" style={styles.logo} />
@@ -139,7 +144,6 @@ export default function ProfileScreen() {
                                 />
                             </Pressable>
                             
-                            {/* --- AQUÍ ESTÁ EL AVISO PARA COTO --- */}
                             {it.key === 'coto' && !it.enabled && (
                                 <Animated.View entering={FadeIn.duration(300)} exiting={FadeOut.duration(300)} style={styles.cotoDisclaimer}>
                                     <Ionicons name="rocket-outline" size={14} color={colors.success} />
@@ -168,37 +172,40 @@ export default function ProfileScreen() {
 
 const styles = StyleSheet.create({
     safeArea: { flex: 1 },
+    container: {
+        padding: 16,
+    },
     profileHeader: {
         borderRadius: 20,
-        padding: 24,
+        padding: 16, // ANTES: 24
         alignItems: 'center',
         marginBottom: 24,
     },
     avatar: {
-        width: 80,
-        height: 80,
-        borderRadius: 40,
+        width: 70, // ANTES: 80
+        height: 70, // ANTES: 80
+        borderRadius: 35, // ANTES: 40
         justifyContent: 'center',
         alignItems: 'center',
-        marginBottom: 12,
+        marginBottom: 8, // ANTES: 12
     },
     avatarText: {
-        fontSize: 32,
+        fontSize: 28, // ANTES: 32
         fontWeight: 'bold',
         color: 'white',
     },
     profileName: {
-        fontSize: 22,
+        fontSize: 20, // ANTES: 22
         fontWeight: 'bold',
         color: 'white',
     },
     profileEmail: {
-        fontSize: 16,
+        fontSize: 14, // ANTES: 16
         color: 'rgba(255, 255, 255, 0.7)',
         marginTop: 4,
     },
     editButton: {
-        marginTop: 16,
+        marginTop: 12, // ANTES: 16
         backgroundColor: 'rgba(255, 255, 255, 0.2)',
         paddingHorizontal: 16,
         paddingVertical: 8,
@@ -216,6 +223,7 @@ const styles = StyleSheet.create({
     },
     card: {
         borderRadius: 16,
+        backgroundColor: 'white',
         shadowColor: "#000",
         shadowOffset: { width: 0, height: 2 },
         shadowOpacity: 0.05,
@@ -224,7 +232,6 @@ const styles = StyleSheet.create({
     },
     rowContainer: {
         borderBottomWidth: 1,
-        borderBottomColor: '#F0F0F0',
         paddingHorizontal: 12,
     },
     settingsRow: {
@@ -254,7 +261,6 @@ const styles = StyleSheet.create({
         fontWeight: '600',
         marginLeft: 8,
     },
-    // --- ESTILOS PARA EL NUEVO AVISO ---
     cotoDisclaimer: {
         flexDirection: 'row',
         alignItems: 'center',

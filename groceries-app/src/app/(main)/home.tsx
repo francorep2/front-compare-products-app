@@ -120,7 +120,7 @@ export default function Home() {
                 <Ionicons name={primaryAction.icon} size={28} color={colors.primary} />
                 <View style={styles.primaryActionTextContainer}>
                   <Text style={[styles.primaryActionTitle, { color: colors.primary }]}>{primaryAction.title}</Text>
-                  <Text style={[styles.primaryActionDescription, { color: colors.tertiary }]}>{primaryAction.description}</Text>
+                  <Text style={[styles.primaryActionDescription, { color: colors.gray500 }]}>{primaryAction.description}</Text>
                 </View>
                 <Ionicons name="chevron-forward-outline" size={24} color={colors.primary} />
               </Pressable>
@@ -138,7 +138,7 @@ export default function Home() {
           </Animated.View>
           
           <Animated.View entering={FadeInUp.duration(600).delay(400)} style={[styles.section, { paddingHorizontal: spacing.md }]}>
-            <Text style={[styles.sectionTitle, { color: colors.tertiary }]}>Más opciones</Text>
+            <Text style={[styles.sectionTitle, { color: colors.secondary }]}>Más opciones</Text>
             <View style={[styles.card, styles.secondaryActionsList]}>
               {secondaryActions.map((action, index) => (
                 <Pressable
@@ -151,7 +151,7 @@ export default function Home() {
                   onPress={() => router.push(action.route)}
                 >
                   <Ionicons name={action.icon} size={24} color={colors.tertiary} />
-                  <Text style={[styles.secondaryActionTitle, { color: colors.tertiary }]}>{action.title}</Text>
+                  <Text style={[styles.secondaryActionTitle, { color: colors.gray600 }]}>{action.title}</Text>
                   <Ionicons name="chevron-forward-outline" size={22} color={colors.gray200} />
                 </Pressable>
               ))}

@@ -1,29 +1,40 @@
-// app/(main)/purchases.tsx
 import { Ionicons } from "@expo/vector-icons";
-import { useHeaderHeight } from "@react-navigation/elements";
-import { useFocusEffect } from "@react-navigation/native";
-import { useRouter } from "expo-router";
+import { useFocusEffect, useRouter } from "expo-router";
 import React from "react";
-import { ActivityIndicator, Alert, Pressable, ScrollView, View } from "react-native";
+import { ActivityIndicator, Alert, Dimensions, FlatList, Pressable, StyleSheet, Text, View } from "react-native";
+import Animated, { FadeInUp } from "react-native-reanimated";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
+import Svg, { Defs, Path, Stop, LinearGradient as SvgGradient } from "react-native-svg";
 
 import { deleteList, getMyLists } from "../../api/endpoints";
 import type { ShoppingListOut } from "../../api/types";
-import { Text } from "../../components/ui/Text";
 import { useTheme } from "../../providers/theme";
-import { Divider } from "../../components/ui/Divider";
 
+const WaveBackground = () => {
+  const { colors } = useTheme();
+  const { width } = Dimensions.get('window');
+  const height = 180;
 
-function parseDDMMYYYY(s: string): number {
-  const [dd, mm, yyyy] = s.split("-").map(Number);
-  return new Date(yyyy, (mm || 1) - 1, dd || 1).getTime();
-}
+  return (
+    <View style={{ position: 'absolute', top: 0, left: 0, right: 0, height }}>
+      <Svg height="100%" width="100%" viewBox={`0 0 ${width} ${height}`}>
+        <Defs>
+          <SvgGradient id="grad" x1="0%" y1="0%" x2="0%" y2="100%">
+            <Stop offset="0%" stopColor={colors.primary} stopOpacity="1" />
+            <Stop offset="100%" stopColor={colors.secondary} stopOpacity="1" />
+          </SvgGradient>
+        </Defs>
+        <Path fill="url(#grad)" d={`M0,0 L0,${height * 0.6} Q${width / 2},${height} ${width},${height * 0.6} L${width},0 Z`} />
+      </Svg>
+    </View>
+  );
+};
+
 
 export default function PurchasesMenu() {
-  const { colors, spacing } = useTheme();              // ✅ hook en top-level
-  const insets = useSafeAreaInsets();                  // ✅ hook en top-level
-  const headerH = useHeaderHeight();                   // ✅ hook en top-level
-  const router = useRouter();                          // ✅ hook en top-level
+  const { colors, spacing } = useTheme();
+  const router = useRouter();
+  const insets = useSafeAreaInsets();
 
   const [lists, setLists] = React.useState<ShoppingListOut[]>([]);
   const [loading, setLoading] = React.useState(true);
@@ -32,8 +43,10 @@ export default function PurchasesMenu() {
   const load = React.useCallback(async () => {
     try {
       const data = await getMyLists();
-      const ordered = [...data].sort((a, b) => parseDDMMYYYY(b.created_at) - parseDDMMYYYY(a.created_at));
-      setLists(ordered.slice(0, 5));
+      const ordered = [...data].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+      setLists(ordered.slice(0, 5)); // Mostramos solo las últimas 5
+    } catch (e) {
+        Alert.alert("Error", "No se pudieron cargar tus listas.");
     } finally {
       setLoading(false);
     }
@@ -46,22 +59,19 @@ export default function PurchasesMenu() {
     }, [load])
   );
 
-  const goAll = () => router.push("/purchases/recents");
-  const goNewList = () => router.push("/new-list");
-
   const onDelete = (id: number, name: string) => {
-    Alert.alert("Eliminar lista", `¿Querés borrar “${name}”?`, [
+    Alert.alert("Eliminar lista", `¿Quieres borrar "${name}"?`, [
       { text: "Cancelar", style: "cancel" },
       {
         text: "Eliminar",
         style: "destructive",
         onPress: async () => {
+          setDeletingId(id);
           try {
-            setDeletingId(id);
             await deleteList(id);
             setLists(prev => prev.filter(l => l.id !== id));
           } catch (e: any) {
-            Alert.alert("Error", e?.data?.detail || e?.message || "No se pudo eliminar la lista.");
+            Alert.alert("Error", e?.message || "No se pudo eliminar la lista.");
           } finally {
             setDeletingId(null);
           }
@@ -70,125 +80,185 @@ export default function PurchasesMenu() {
     ]);
   };
 
-  return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: colors.white }} edges={["top", "bottom"]}>
-      <ScrollView
-        keyboardShouldPersistTaps="handled"
-        contentContainerStyle={{
-          padding: spacing.md,
-          paddingBottom: insets.bottom + 160,
-        }}
-      >
-        <Text style={{ fontSize: 30, fontWeight: "800", color: colors.secondary, marginBottom: spacing.xs }}>
-          ¡Tus Listas de Compras!
-        </Text>
-        <View style={{ height: 1, backgroundColor: "#E9EEF5", opacity: 0.7, marginBottom: spacing.md }} />
-
-
-        {/* Ver todas (como botón) */}
-        <View style={{ alignItems: "center"}}>
-        <Pressable
-          onPress={goAll}
-          hitSlop={8}
-          android_ripple={{ color: "#00000010", borderless: false }}
-          style={{
-            marginBottom: spacing.md,
-            paddingVertical: 8,
-            paddingHorizontal: 14,
-            borderRadius: 999,
-            borderWidth: 1,
-            borderColor: colors.tertiary,
-            backgroundColor: "white",
-            flexDirection: "row",
-            alignItems: "center",
-            gap: 8,
-          }}
+  const ListCard = ({ item }: { item: ShoppingListOut }) => (
+    <Animated.View entering={FadeInUp.duration(500)}>
+        <Pressable 
+            style={[styles.card, { backgroundColor: colors.white, borderColor: colors.border }]}
+            onPress={() => router.push({ pathname: "/list/[id]", params: { id: String(item.id) } })}
         >
-          
-          <Ionicons name="albums-outline" size={16} color={colors.tertiary} />
-          <Text style={{ color: colors.tertiary, fontWeight: "800" }}>
-            Ver todas las listas
-          </Text>
-          <Ionicons name="chevron-forward" size={16} color={colors.tertiary} />
+            <View style={[styles.cardIcon, { backgroundColor: colors.white }]}>
+                <Ionicons name="list-outline" size={24} color={colors.primary} />
+            </View>
+            <View style={styles.cardTextContainer}>
+                <Text style={[styles.cardTitle, { color: colors.text }]}>{item.nombre}</Text>
+                <Text style={[styles.cardSubtitle, { color: colors.tertiary }]}>
+                    Creada el {new Date(item.created_at).toLocaleDateString('es-ES')}
+                </Text>
+            </View>
+            <Pressable onPress={() => onDelete(item.id, item.nombre)} style={styles.deleteButton} hitSlop={10}>
+                {deletingId === item.id ? 
+                    <ActivityIndicator size="small" /> :
+                    <Ionicons name="trash-outline" size={22} color={colors.error} />
+                }
+            </Pressable>
         </Pressable>
-        </View> 
+    </Animated.View>
+  );
 
-        <View style={{ height: 1, backgroundColor: "#E9EEF5", opacity: 0.7, marginBottom: spacing.md }} />
-
-        <Text style={{ color: colors.tertiary, marginBottom: spacing.sm, fontSize: 12 }}>Últimas 5</Text>
-
-        {loading ? (
-          <View style={{ paddingVertical: 15, alignItems: "center" }}>
-            <ActivityIndicator />
-          </View>
-        ) : lists.length === 0 ? (
-          <View style={{ paddingVertical: 24 }}>
-            <Text style={{ color: colors.gray600 }}>Aún no tenés listas. ¡Creá la primera!</Text>
-          </View>
-        ) : (
-          <View style={{ gap: spacing.sm }}>
-            {lists.map((it) => (
-              <View
-                key={it.id}
-                style={{
-                  backgroundColor: "#FAFBFC",
-                  borderWidth: 1,
-                  borderColor: "#E9EEF5",
-                  borderRadius: 10,
-                  padding: 6,
-                  flexDirection: "row",
-                  alignItems: "center",
-                }}
-              >
-                {/* Navegación al detalle */}
+  return (
+    <View style={[styles.root, { backgroundColor: colors.background }]}>
+      <WaveBackground />
+      <SafeAreaView style={styles.safeArea} edges={["bottom"]}>
+        <FlatList
+          data={lists}
+          keyExtractor={(item) => String(item.id)}
+          contentContainerStyle={[styles.listContainer, { paddingBottom: insets.bottom + 80 }]}
+          ListHeaderComponent={
+            <Animated.View entering={FadeInUp.duration(600)} style={{ paddingTop: insets.top + 20 }}>
+              <Text style={styles.title}>Mis Listas</Text>
+              <Text style={styles.subtitle}>Aquí encontrarás tus listas de compras guardadas.</Text>
+              
+              {/* --- BOTÓN PARA VER TODAS LAS LISTAS --- */}
+              <View style={styles.allListsButtonContainer}>
                 <Pressable
-                  onPress={() => router.push({ pathname: "/list/[id]", params: { id: String(it.id) } })}
-                  style={{ flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}
-                  hitSlop={6}
+                  onPress={() => router.push("/purchases/recents")}
+                  style={[styles.allListsButton, { backgroundColor: colors.white, shadowColor: colors.text }]}
                 >
-                  <View style={{ gap: 2 }}>
-                    <Text style={{ fontWeight: "800", color: colors.secondary }}>{it.nombre}</Text>
-                    <Text style={{ color: colors.gray600, fontSize: 10 }}>Creada: {it.created_at}</Text>
-                  </View>
-                  <Ionicons name="chevron-forward" size={18} color={colors.gray500} />
-                </Pressable>
-
-                {/* Borrar lista (no usa hooks) */}
-                <Pressable onPress={() => onDelete(it.id, it.nombre)} hitSlop={10} style={{ paddingHorizontal: 6, paddingVertical: 4, marginLeft: 4 }}>
-                  {deletingId === it.id ? (
-                    <ActivityIndicator />
-                  ) : (
-                    <Ionicons name="trash-outline" size={20} color={colors.tertiary ?? "#ef4444"} />
-                  )}
+                  <Ionicons name="albums-outline" size={18} color={colors.tertiary} />
+                  <Text style={[styles.allListsButtonText, { color: colors.tertiary }]}>
+                    Ver todas las listas
+                  </Text>
+                  <Ionicons name="chevron-forward" size={18} color={colors.tertiary} />
                 </Pressable>
               </View>
-            ))}
-          </View>
-        )}
-      </ScrollView>
 
-      {/* Botón flotante centrado */}
-      <Pressable
-        onPress={goNewList}
-        style={{
-          position: "absolute",
-          alignSelf: "center",
-          bottom: Math.max(insets.bottom, 10) + 105,
-          minWidth: 220,
-          height: 48,
-          borderRadius: 999,
-          backgroundColor: colors.primary,
-          alignItems: "center",
-          justifyContent: "center",
-          flexDirection: "row",
-          gap: 10,
-          paddingHorizontal: 18,
-          zIndex: 30,
-        }}
-      >
-        <Ionicons name="add-circle" size={22} color="#fff" />
-        <Text style={{ color: "#fff", fontWeight: "800" }}>Nueva Lista</Text>
-      </Pressable>
-    </SafeAreaView>
+              {/* --- SUBTÍTULO "ÚLTIMAS 5" --- */}
+              <Text style={[styles.sectionTitle, { color: colors.black }]}>
+                Últimas 5 listas creadas
+              </Text>
+
+            </Animated.View>
+          }
+          renderItem={({ item }) => <ListCard item={item} />}
+          ListEmptyComponent={
+            !loading ? (
+              <View style={styles.emptyContainer}>
+                <Ionicons name="file-tray-outline" size={60} color={colors.gray200} />
+                <Text style={[styles.emptyText, { color: colors.gray600 }]}>Aún no tienes listas</Text>
+                <Text style={[styles.emptySubText, { color: colors.gray400 }]}>Crea tu primera lista con el botón (+)</Text>
+              </View>
+            ) : null
+          }
+          ListFooterComponent={loading ? <ActivityIndicator size="large" color={colors.primary} style={{ marginTop: 40 }} /> : null}
+        />
+        
+
+      </SafeAreaView>
+    </View>
   );
 }
+
+const styles = StyleSheet.create({
+  root: { flex: 1 },
+  safeArea: { flex: 1 },
+  listContainer: { 
+    paddingHorizontal: 16,
+  },
+  title: {
+    fontSize: 28,
+    fontWeight: "bold",
+    color: 'white',
+    textAlign: 'center',
+  },
+  subtitle: {
+    fontSize: 16,
+    color: 'rgba(255,255,255,0.8)',
+    textAlign: 'center',
+    marginBottom: 24,
+    marginTop: 4,
+  },
+  allListsButtonContainer: {
+    alignItems: 'center',
+    marginBottom: 24,
+  },
+  allListsButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingVertical: 10,
+    paddingHorizontal: 20,
+    borderRadius: 999,
+    elevation: 5,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+  },
+  allListsButtonText: {
+    fontWeight: 'bold',
+    fontSize: 14,
+  },
+  sectionTitle: {
+    fontSize: 14,
+    fontWeight: '600',
+    marginBottom: 12,
+    paddingHorizontal: 4,
+    textTransform: 'uppercase',
+    opacity: 0.8,
+  },
+  emptyContainer: {
+    marginTop: 40,
+    alignItems: 'center',
+  },
+  emptyText: {
+    fontSize: 18,
+    fontWeight: '600',
+    marginTop: 16,
+  },
+  emptySubText: {
+    fontSize: 14,
+    marginTop: 8,
+  },
+  card: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 16,
+    borderRadius: 16,
+    borderWidth: 1,
+    marginBottom: 12,
+  },
+  cardIcon: {
+    width: 48,
+    height: 48,
+    borderRadius: 12,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 16,
+  },
+  cardTextContainer: {
+    flex: 1,
+  },
+  cardTitle: {
+    fontSize: 16,
+    fontWeight: 'bold',
+  },
+  cardSubtitle: {
+    fontSize: 12,
+    marginTop: 4,
+  },
+  deleteButton: {
+    padding: 8,
+  },
+  fab: {
+      position: 'absolute',
+      width: 60,
+      height: 60,
+      borderRadius: 30,
+      justifyContent: 'center',
+      alignItems: 'center',
+      elevation: 8,
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 4 },
+      shadowOpacity: 0.3,
+      shadowRadius: 4,
+  },
+});

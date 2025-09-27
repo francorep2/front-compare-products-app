@@ -44,12 +44,14 @@ export const apiLogin = (credentials: LoginStartIn): Promise<TokenOut> => {
   });
 };
 
-export const submitSupportTicket = (data: { message: string }): Promise<any> => {
-  return request("/support/tickets", {
+export type SubmitSupportTicketIn = { message: string };
+export type SubmitSupportTicketOut = { detail: string };
+export const submitSupportTicket = (payload: SubmitSupportTicketIn) =>
+  request<SubmitSupportTicketOut>("/support/tickets", {
     method: "POST",
-    body: JSON.stringify(data),
+    body: JSON.stringify(payload),
   });
-};
+
 
 // ---------- REGISTER (con OTP) ----------
 export const registerStart = (payload: RegisterStartIn) =>

@@ -1,16 +1,30 @@
 import { Ionicons } from "@expo/vector-icons";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useRouter } from "expo-router";
-import { useState } from "react";
 import { Controller, useForm } from "react-hook-form";
-import { Alert, KeyboardAvoidingView, Platform, Pressable, ScrollView, Text, TextInput, View } from "react-native";
+import {
+  Alert,
+  Dimensions,
+  KeyboardAvoidingView,
+  Platform,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
+} from "react-native";
+import Animated, { FadeInUp } from "react-native-reanimated";
+import { SafeAreaView } from "react-native-safe-area-context";
+import Svg, { Defs, Path, Stop, LinearGradient as SvgGradient } from "react-native-svg";
 import { z } from "zod";
 
-import { useHeaderHeight } from "@react-navigation/elements";
-import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { updateMe } from "../../api/endpoints";
+import { Button } from "../../components/ui/Button";
+import { PasswordInput } from "../../components/ui/PasswordInput";
 import { useAuth } from "../../providers/auth";
-import { colors, spacing, styles } from "../../styles/register";
+import { useTheme } from "../../providers/theme";
+import { colors } from "../../theme/colors";
 
 const schema = z.object({
   first_name: z.string().min(2, "Mínimo 2 caracteres.").optional().or(z.literal("")),
@@ -25,25 +39,65 @@ const schema = z.object({
 
 type FormValues = z.infer<typeof schema>;
 
+const WaveBackground = () => {
+  const { colors } = useTheme();
+  const { width } = Dimensions.get('window');
+  const height = 180;
+
+  return (
+    <View style={{ position: 'absolute', top: 0, left: 0, right: 0, height }}>
+      <Svg height="100%" width="100%" viewBox={`0 0 ${width} ${height}`}>
+        <Defs>
+          <SvgGradient id="grad" x1="0%" y1="0%" x2="0%" y2="100%">
+            <Stop offset="0%" stopColor={colors.primary} stopOpacity="1" />
+            <Stop offset="100%" stopColor={colors.secondary} stopOpacity="1" />
+          </SvgGradient>
+        </Defs>
+        <Path fill="url(#grad)" d={`M0,0 L0,${height * 0.6} Q${width / 2},${height} ${width},${height * 0.6} L${width},0 Z`} />
+      </Svg>
+    </View>
+  );
+};
+
+const ControlledInput = ({ control, name, placeholder, icon, ...props }) => {
+    const { colors } = useTheme();
+    return (
+        <Controller
+            control={control}
+            name={name}
+            render={({ field: { onChange, onBlur, value }, fieldState: { error } }) => (
+                <View style={styles.fieldContainer}>
+                    <Text style={[styles.label, { color: colors.primary }]}>{placeholder}</Text>
+                    <View style={[styles.inputContainer, { borderColor: error ? colors.error : colors.border }]}>
+                        <Ionicons name={icon} size={20} color={colors.primary} style={styles.inputIcon} />
+                        <TextInput
+                            value={value}
+                            onChangeText={onChange}
+                            onBlur={onBlur}
+                            placeholder={placeholder}
+                            style={[styles.input, { color: colors.text }]}
+                            placeholderTextColor={colors.gray400}
+                            {...props}
+                        />
+                    </View>
+                    {error && <Text style={styles.errorText}>{error.message}</Text>}
+                </View>
+            )}
+        />
+    )
+};
+
 export default function ProfileEditScreen() {
+  const { colors } = useTheme();
   const router = useRouter();
-  const { user, logout } = useAuth(); // 👈 usamos logout
-  const insets = useSafeAreaInsets();
-  const headerH = useHeaderHeight();
+  const { user, logout } = useAuth();
 
-  const currentFirst = (user as any)?.first_name ?? (user as any)?.firstName ?? "";
-  const currentLast  = (user as any)?.last_name  ?? (user as any)?.lastName  ?? "";
-  const currentEmail = user?.email ?? "";
-
-  const [showPwd, setShowPwd] = useState(false);
-  const [showPwd2, setShowPwd2] = useState(false);
-
-  const { control, handleSubmit, getValues, formState: { errors, isSubmitting } } = useForm<FormValues>({
+  const { control, handleSubmit, formState: { isSubmitting, errors } } = useForm<FormValues>({
     resolver: zodResolver(schema),
     defaultValues: {
-      first_name: currentFirst,
-      last_name: currentLast,
-      email: currentEmail,
+      first_name: user?.first_name ?? "",
+      last_name:  user?.last_name  ?? "",
+      email:      user?.email ?? "",
       password: "",
       confirm: "",
     },
@@ -51,175 +105,178 @@ export default function ProfileEditScreen() {
   });
 
   const onSubmit = async (data: FormValues) => {
-    // armar payload solo con cambios reales
     const payload: Record<string, string> = {};
-    const fn = data.first_name?.trim();
-    const ln = data.last_name?.trim();
-    const em = data.email?.trim().toLowerCase();
-    const pw = data.password?.trim();
-
-    if (fn && fn !== currentFirst) payload.first_name = fn;
-    if (ln && ln !== currentLast)  payload.last_name  = ln;
-    if (em && em !== currentEmail) payload.email      = em;
-    if (pw)                        payload.password   = pw;
+    if (data.first_name && data.first_name.trim() !== user?.first_name) payload.first_name = data.first_name.trim();
+    if (data.last_name && data.last_name.trim() !== user?.last_name) payload.last_name = data.last_name.trim();
+    if (data.email && data.email.trim().toLowerCase() !== user?.email) payload.email = data.email.trim().toLowerCase();
+    if (data.password) payload.password = data.password;
 
     if (Object.keys(payload).length === 0) {
       Alert.alert("Sin cambios", "No modificaste ningún dato.");
       return;
     }
-
+    
     const mustLogout = "email" in payload || "password" in payload;
 
     try {
       await updateMe(payload);
-
       if (mustLogout) {
-        Alert.alert(
-          "Perfil actualizado",
-          "Actualizaste tu correo o contraseña. Por seguridad, vamos a cerrar tu sesión.",
-          [
-            {
-              text: "OK",
-              onPress: async () => {
-                try { await logout(); } finally { router.replace("/login"); }
-              },
-            },
-          ]
-        );
+        Alert.alert("Perfil actualizado", "Por seguridad, vamos a cerrar tu sesión.", [
+          { text: "OK", onPress: async () => { await logout(); router.replace("/login"); } },
+        ]);
       } else {
         Alert.alert("Perfil actualizado", "Tus datos fueron guardados.", [
           { text: "OK", onPress: () => router.back() },
         ]);
       }
     } catch (e: any) {
-      const msg = e?.data?.detail || e?.data?.message || e?.message || "No se pudo actualizar el perfil.";
-      Alert.alert("Error", String(msg));
+      Alert.alert("Error", e?.message || "No se pudo actualizar el perfil.");
     }
-  };
-
-  const attemptSubmit = async () => {
-    const v = getValues();
-    if (v.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v.email)) {
-      Alert.alert("Email inválido", "Revisá el formato del correo.");
-      return;
-    }
-    if (v.password && v.password.length < 6) {
-      Alert.alert("Contraseña muy corta", "Debe tener 6 caracteres o más.");
-      return;
-    }
-    if (v.password && v.password !== v.confirm) {
-      Alert.alert("Contraseñas no coinciden", "Ambas contraseñas deben ser iguales.");
-      return;
-    }
-    await handleSubmit(onSubmit)();
   };
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: "white" }} edges={["top", "bottom"]}>
-      <KeyboardAvoidingView
-        style={{ flex: 1 }}
-        behavior={Platform.select({ ios: "padding", android: "height" })}
-        keyboardVerticalOffset={Platform.OS === "ios" ? headerH : 0}
-      >
-        <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={{ padding: spacing.md, paddingBottom: insets.bottom + 120 }}>
-          <Text style={styles.title}>Editar Perfil</Text>
-
-          {/* Nombre */}
-          <Text style={styles.label}>Nombre</Text>
-          <Controller
-            control={control}
-            name="first_name"
-            render={({ field: { onChange, onBlur, value } }) => (
-              <TextInput value={value} onChangeText={onChange} onBlur={onBlur} placeholder="Nombre" style={styles.input} />
-            )}
-          />
-          {!!errors.first_name && <Text style={styles.errorText}>{errors.first_name.message as string}</Text>}
-
-          {/* Apellido */}
-          <Text style={styles.label}>Apellido</Text>
-          <Controller
-            control={control}
-            name="last_name"
-            render={({ field: { onChange, onBlur, value } }) => (
-              <TextInput value={value} onChangeText={onChange} onBlur={onBlur} placeholder="Apellido" style={styles.input} />
-            )}
-          />
-          {!!errors.last_name && <Text style={styles.errorText}>{errors.last_name.message as string}</Text>}
-
-          {/* Email */}
-          <Text style={styles.label}>Correo Electrónico</Text>
-          <Controller
-            control={control}
-            name="email"
-            render={({ field: { onChange, onBlur, value } }) => (
-              <TextInput
-                value={value}
-                onChangeText={(t) => onChange(t.toLowerCase())}
-                onBlur={onBlur}
-                placeholder="nombre@correo.com"
-                autoCapitalize="none"
-                autoCorrect={false}
-                keyboardType="email-address"
-                style={styles.input}
-              />
-            )}
-          />
-          {!!errors.email && <Text style={styles.errorText}>{errors.email.message as string}</Text>}
-
-          {/* Password */}
-          <Text style={styles.label}>Nueva contraseña (opcional)</Text>
-          <View style={{ position: "relative" }}>
-            <Controller
-              control={control}
-              name="password"
-              render={({ field: { onChange, onBlur, value } }) => (
-                <TextInput
-                  value={value}
-                  onChangeText={onChange}
-                  onBlur={onBlur}
-                  placeholder="********"
-                  secureTextEntry={!showPwd}
-                  autoCapitalize="none"
-                  style={[styles.input, { paddingRight: 40 }]}
-                />
-              )}
-            />
-            <Pressable style={styles.eye} onPress={() => setShowPwd((s) => !s)}>
-              <Ionicons name={showPwd ? "eye-off-outline" : "eye-outline"} size={20} color={colors.gray600} />
-            </Pressable>
-          </View>
-          {!!errors.password && <Text style={styles.errorText}>{errors.password.message as string}</Text>}
-
-          {/* Confirm */}
-          <Text style={styles.label}>Confirmar contraseña</Text>
-          <View style={{ position: "relative" }}>
-            <Controller
-              control={control}
-              name="confirm"
-              render={({ field: { onChange, onBlur, value } }) => (
-                <TextInput
-                  value={value}
-                  onChangeText={onChange}
-                  onBlur={onBlur}
-                  placeholder="********"
-                  secureTextEntry={!showPwd2}
-                  autoCapitalize="none"
-                  style={[styles.input, { paddingRight: 40 }]}
-                />
-              )}
-            />
-            <Pressable style={styles.eye} onPress={() => setShowPwd2((s) => !s)}>
-              <Ionicons name={showPwd2 ? "eye-off-outline" : "eye-outline"} size={20} color={colors.gray600} />
-            </Pressable>
-          </View>
-          {!!errors.confirm && <Text style={styles.errorText}>{errors.confirm.message as string}</Text>}
-
-          {/* Botón Guardar */}
-          <Pressable onPress={attemptSubmit} disabled={isSubmitting} style={[styles.btnPrimary, isSubmitting && { opacity: 0.6 }]}>
-            <Text style={styles.btnPrimaryText}>{isSubmitting ? "Guardando..." : "Guardar cambios"}</Text>
+    <View style={[styles.root, { backgroundColor: colors.background }]}>
+      <WaveBackground />
+      <SafeAreaView style={styles.safeArea} edges={["top", "bottom"]}>
+        <View style={[styles.header, { borderBottomColor: colors.border }]}>
+          <Pressable onPress={() => router.back()} style={styles.backButton}>
+            <Ionicons name="chevron-back" size={24} color={colors.white} />
           </Pressable>
-        </ScrollView>
-      </KeyboardAvoidingView>
-    </SafeAreaView>
+          <Text style={[styles.headerTitle, { color: colors.white }]}>Editar Perfil</Text>
+          <View style={{ width: 40 }} />
+        </View>
+
+        <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === "ios" ? "padding" : "height"}>
+          <ScrollView contentContainerStyle={styles.container} keyboardShouldPersistTaps="handled">
+            <Animated.View entering={FadeInUp.duration(800).delay(200)} style={[styles.contentCard, { backgroundColor: colors.white }]}>
+              <View style={styles.form}>
+                <ControlledInput control={control} name="first_name" placeholder="Nombre" icon="person-outline" />
+                <ControlledInput control={control} name="last_name" placeholder="Apellido" icon="person-outline" />
+                <ControlledInput control={control} name="email" placeholder="Email" icon="mail-outline" keyboardType="email-address" autoCapitalize="none" />
+
+                <Text style={[styles.sectionTitle, { color: colors.tertiary }]}>Cambiar contraseña (opcional)</Text>
+                
+                <Controller
+                  control={control} name="password"
+                  render={({ field: { onChange, onBlur, value }, fieldState: { error } }) => (
+                    <View style={styles.fieldContainer}>
+                      <Text style={[styles.label, { color: colors.tertiary }]}>Nueva contraseña</Text>
+                      <View style={[styles.inputContainer, { borderColor: error ? colors.error : colors.border }]}>
+                        <Ionicons name="lock-closed-outline" size={20} color={colors.tertiary} style={styles.inputIcon} />
+                        <PasswordInput
+                          value={value} onChangeText={onChange} onBlur={onBlur}
+                          placeholder="Nueva contraseña"
+                          style={[styles.input, { flex: 1, color: colors.text }]}
+                          placeholderTextColor={colors.gray400}
+                        />
+                      </View>
+                      {error && <Text style={styles.errorText}>{error.message}</Text>}
+                    </View>
+                  )}
+                />
+                <Controller
+                  control={control} name="confirm"
+                  render={({ field: { onChange, onBlur, value }, fieldState: { error } }) => (
+                    <View style={styles.fieldContainer}>
+                      <Text style={[styles.label, { color: colors.tertiary }]}>Confirmar contraseña</Text>
+                      <View style={[styles.inputContainer, { borderColor: error ? colors.error : colors.border }]}>
+                        <Ionicons name="lock-closed-outline" size={20} color={colors.tertiary} style={styles.inputIcon} />
+                        <PasswordInput
+                          value={value} onChangeText={onChange} onBlur={onBlur}
+                          placeholder="Confirmar nueva contraseña"
+                          style={[styles.input, { flex: 1, color: colors.text }]}
+                          placeholderTextColor={colors.gray400}
+                        />
+                      </View>
+                      {error && <Text style={styles.errorText}>{error.message}</Text>}
+                    </View>
+                  )}
+                />
+
+                <Button
+                  title="Guardar Cambios"
+                  onPress={handleSubmit(onSubmit)}
+                  loading={isSubmitting}
+                  style={[styles.submitButton, { backgroundColor: colors.primary }]}
+                  textStyle={styles.submitButtonText}
+                />
+              </View>
+            </Animated.View>
+          </ScrollView>
+        </KeyboardAvoidingView>
+      </SafeAreaView>
+    </View>
   );
 }
+
+const styles = StyleSheet.create({
+  root: { flex: 1 },
+  safeArea: { flex: 1 },
+  header: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    paddingHorizontal: 16, paddingVertical: 12
+    },
+  backButton: { padding: 8 },
+  headerTitle: { fontSize: 35, fontWeight: 'bold' },
+  container: {
+    flexGrow: 1,
+    padding: 16,
+  },
+  contentCard: {
+    padding: 20,
+    borderRadius: 20,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.08,
+    shadowRadius: 15,
+    elevation: 5,
+  },
+  form: { width: '100%' },
+  fieldContainer: {
+    marginBottom: 8,
+  },
+  label: {
+    fontSize: 14,
+    fontWeight: '500',
+    marginBottom: 6,
+    paddingLeft: 4,
+  },
+  sectionTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    marginTop: 16,
+    marginBottom: 12,
+    opacity: 0.8,
+  },
+  inputContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderRadius: 12,
+    borderWidth: 1,
+    paddingHorizontal: 16,
+    backgroundColor: '#F9F9F9',
+  },
+  inputIcon: { marginRight: 12 },
+  input: {
+    height: 50,
+    fontSize: 16,
+  },
+  errorText: {
+    color: 'red',
+    fontSize: 12,
+    marginTop: 4,
+    paddingLeft: 4,
+  },
+  submitButton: {
+    height: 50,
+    borderRadius: 12,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginTop: 24,
+  },
+  submitButtonText: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: 'white',
+  },
+});

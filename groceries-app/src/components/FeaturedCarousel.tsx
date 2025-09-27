@@ -9,10 +9,10 @@ import {
 
 // Colores de la aplicación (ajusta si tienes una paleta global)
 const appColors = {
-  primary: "#FF1455", // Tu color primario
+  primary: "#211f8fff", // Tu color primario
   secondary: "#4CAF50", // Un color secundario
   tertiary: "#2196F3", // Otro color para variar
-  accent: "#FFC107", // Un color de acento
+  accent: "#ffd207ff", // Un color de acento
   cardBackground: "#FFFFFF",
   text: "#333333",
   textLight: "#666666",

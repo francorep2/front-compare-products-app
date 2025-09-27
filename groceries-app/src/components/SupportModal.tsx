@@ -15,23 +15,24 @@ export default function SupportModal({ visible, onClose }: SupportModalProps) {
   const [message, setMessage] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const handleSubmit = async () => {
-    if (!message.trim()) {
-      Alert.alert("Mensaje vacío", "Por favor, describe tu problema o sugerencia.");
-      return;
-    }
-    setIsSubmitting(true);
-    try {
-      const response = await submitSupportTicket({ message });
-      Alert.alert("Reporte Enviado", response.detail ?? "¡Gracias por tu comentario!");
-      setMessage('');
-      onClose(); // Cierra el modal después de enviar con éxito
-    } catch (e: any) {
-      Alert.alert("Error", e.message || "No se pudo enviar el reporte en este momento.");
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
+ const handleSubmit = async () => {
+  const text = message.trim();
+  if (text.length < 3) {
+    Alert.alert("Mensaje muy corto", "Contanos un poco más del problema (mín. 3 caracteres).");
+    return;
+  }
+  setIsSubmitting(true);
+  try {
+    const response = await submitSupportTicket({ message: text });
+    Alert.alert("Reporte Enviado", response.detail ?? "¡Gracias por tu comentario!");
+    setMessage("");
+    onClose();
+  } catch (e: any) {
+    Alert.alert("Error", e.message || "No se pudo enviar el reporte.");
+  } finally {
+    setIsSubmitting(false);
+  }
+};
 
   return (
     <Modal

@@ -1,48 +1,27 @@
-// app/(main)/list/[id].tsx
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
-import { useHeaderHeight } from "@react-navigation/elements";
-import { useFocusEffect } from "@react-navigation/native";
-import { useLocalSearchParams, useRouter } from "expo-router";
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import { CameraView, useCameraPermissions } from "expo-camera";
+import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
-  ActivityIndicator,
-  Alert,
-  Animated,
-  Dimensions,
-  Easing,
-  FlatList,
-  Image,
-  KeyboardAvoidingView,
-  Linking,
-  Modal,
-  Platform,
-  Pressable,
-  RefreshControl,
-  TextInput,
-  View,
+  ActivityIndicator, Alert, Animated, Dimensions, Easing, FlatList, Image,
+  KeyboardAvoidingView, Linking, Modal, Platform, Pressable, RefreshControl,
+  StyleSheet, Text, TextInput, View
 } from "react-native";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 
-// 🚀 NUEVO: cámara para escanear
-import { CameraView, useCameraPermissions } from "expo-camera";
-
+import { FadeInUp } from "react-native-reanimated";
 import {
-  addItem as apiAddItem,
-  deleteItem as apiDeleteItem,
-  deleteList as apiDeleteList,
-  renameList as apiRenameList,
-  updateItem as apiUpdateItem,
-  getListDetail,
-  getScrapeSources,
-  searchAll, // se usa con { q } o con { barcode }
-  sourcesToEnabled,
+  addItem as apiAddItem, deleteItem as apiDeleteItem, deleteList as apiDeleteList,
+  renameList as apiRenameList, updateItem as apiUpdateItem, getListDetail,
+  getScrapeSources, searchAll, searchAllBarcode, sourcesToEnabled
 } from "../../../api/endpoints";
 import type { ScrapeSources, SearchHit, SearchRawResponse, ShoppingItemOut } from "../../../api/types";
-import { Text } from "../../../components/ui/Text";
 import { useTheme } from "../../../providers/theme";
 
-// altura del sheet: media pantalla
+// --- TIPOS Y HELPERS (DE TU CÓDIGO ORIGINAL) ---
 const SHEET_HEIGHT = Math.round(Dimensions.get("window").height * 0.5);
+const HEADER_H = 100   // alto del header fijo
+const ADD_BAR_H = 24;  // alto de la barra “Añadir producto” fija
 
 type Row = ShoppingItemOut & {
   _checked: boolean;
@@ -65,17 +44,13 @@ function parsePrice(raw?: string): number {
   return Number.isFinite(n) ? n : 0;
 }
 
-// ⬇️ Actualizado: incluye promotion y descarta ítems sin title/url
 function flattenSearch(raw: SearchRawResponse): SearchHit[] {
   const buckets: Record<string, any> = (raw as any)?.results ?? (raw as any) ?? {};
   const out: SearchHit[] = [];
-
   for (const [store, arr] of Object.entries(buckets)) {
     if (!Array.isArray(arr)) continue;
     for (const it of arr) {
-      // Filtro temprano: si no hay título o url, no lo agregamos
       if (!it?.title || !it?.url) continue;
-
       out.push({
         store,
         name: it.title,
@@ -83,67 +58,62 @@ function flattenSearch(raw: SearchRawResponse): SearchHit[] {
         url: it.url,
         image_url: it.image_url,
         barcode: it.barcode,
-        promotion: it.promotion ?? null, // 👈 NUEVO
+        promotion: it.promotion ?? null,
       } as SearchHit);
     }
   }
-  out.sort((a, b) => a.price - b.price);
+  out.sort((a, b) => (a.price ?? 0) - (b.price ?? 0));
   return out;
 }
 
-// 👉 helper para limpiar EAN/UPC
 const onlyDigits = (s: string | undefined | null) => (s || "").replace(/\D/g, "");
+
+const COMPANY_ICONS: Record<string, any> = {
+  coto: require("../../../../assets/company/coto.png"),
+  dia: require("../../../../assets/company/dia.png"),
+  carrefour: require("../../../../assets/company/carrefour.png"),
+  jumbo: require("../../../../assets/company/jumbo.png"),
+};
+const normalizeKey = (s: string) => s.toLowerCase().replace(/\s+|_/g, "");
+const iconForStore = (store: string) => COMPANY_ICONS[normalizeKey(store)] ?? null;
 
 export default function ListDetailScreen() {
   const { colors, spacing } = useTheme();
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const { id } = useLocalSearchParams<{ id: string }>();
-  const headerH = useHeaderHeight();
 
-  const [listName, setListName] = useState<string>("Lista");
+  // --- ESTADOS (DE TU CÓDIGO ORIGINAL) ---
+  const [listName, setListName] = useState<string>("Nueva lista");
   const [editingName, setEditingName] = useState(false);
   const [createdAt, setCreatedAt] = useState<string | undefined>(undefined);
   const [rows, setRows] = useState<Row[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
-
-  // Sheet state
   const [sheetVisible, setSheetVisible] = useState(false);
   const [sheetLoading, setSheetLoading] = useState(false);
   const [sheetErr, setSheetErr] = useState<string | null>(null);
   const [hits, setHits] = useState<SearchHit[]>([]);
-
-  // Animations
-  const sheetY = React.useRef(new Animated.Value(1)).current; // 1 => hidden, 0 => shown
-  const backdrop = React.useRef(new Animated.Value(0)).current;
-
-  // Assets por tienda
-  const COMPANY_ICONS: Record<string, any> = {
-    coto: require("../../../../assets/company/coto.png"),
-    dia: require("../../../../assets/company/dia.png"),
-    carrefour: require("../../../../assets/company/carrefour.png"),
-    jumbo: require("../../../../assets/company/jumbo.png"),
-  };
-  const normalizeKey = (s: string) => s.toLowerCase().replace(/\s+|_/g, "");
-  const iconForStore = (store: string) => COMPANY_ICONS[normalizeKey(store)] ?? null;
-
-  // 👉 estados para agregar nuevo ítem
+  const sheetY = useRef(new Animated.Value(SHEET_HEIGHT)).current;
+  const backdrop = useRef(new Animated.Value(0)).current;
   const [newNombre, setNewNombre] = useState("");
   const [newCantidad, setNewCantidad] = useState("");
   const [adding, setAdding] = useState(false);
+  const [sources, setSources] = useState<ScrapeSources | null>(null);
+  const [loadingSources, setLoadingSources] = useState(true);
+  const [scannerVisible, setScannerVisible] = useState(false);
+  const [scanningRowIdx, setScanningRowIdx] = useState<number | null>(null);
+  const [permission, requestPermission] = useCameraPermissions();
+  const [hasScanned, setHasScanned] = useState(false);
 
   const listId = Number(id);
 
-  // ---- Selección de supermercados (desde /search/config) ----
-  const [sources, setSources] = useState<ScrapeSources | null>(null);
-  const [loadingSources, setLoadingSources] = useState(true);
-
+  // --- LÓGICA DE DATOS (DE TU CÓDIGO ORIGINAL) ---
   const loadSources = useCallback(async () => {
     setLoadingSources(true);
     try {
-      const cfg = await getScrapeSources(); // { carrefour, coto, jumbo, dia }
+      const cfg = await getScrapeSources();
       setSources(cfg);
     } catch {
       setSources({ carrefour: true, coto: true, jumbo: true, dia: true });
@@ -152,34 +122,14 @@ export default function ListDetailScreen() {
     }
   }, []);
 
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      if (!cancelled) await loadSources();
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [loadSources]);
+  useEffect(() => { loadSources(); }, []);
 
-  useFocusEffect(
-    useCallback(() => {
-      // refrescar selección al volver de config
-      loadSources();
-    }, [loadSources])
-  );
-
-  const enabled = useMemo(() => {
-    if (!sources) return [];
-    return sourcesToEnabled(sources);
-  }, [sources]);
-
-  const load = async () => {
+  const load = useCallback(async () => {
     if (!listId) return;
     try {
       setError(null);
       const detail = await getListDetail(listId);
-      setListName(detail.nombre);
+      setListName(detail.nombre || "Nueva lista");
       setCreatedAt(detail.created_at);
       setRows(
         detail.items.map((i) => ({
@@ -190,152 +140,115 @@ export default function ListDetailScreen() {
         }))
       );
     } catch (e: any) {
-      setError(e?.data?.detail || e?.message || "No se pudo cargar la lista.");
+      setError(e?.message || "No se pudo cargar la lista.");
     } finally {
       setLoading(false);
       setRefreshing(false);
     }
-  };
+  }, [listId]);
 
-  useFocusEffect(
-    React.useCallback(() => {
-      setLoading(true);
-      load();
-    }, [listId])
-  );
+  useFocusEffect(useCallback(() => { setLoading(true); load(); }, [load]));
 
-  const onRefresh = () => {
-    setRefreshing(true);
-    load();
-  };
+  const onRefresh = () => { setRefreshing(true); load(); };
 
-  // --------- Lógica de mejores precios por NOMBRE (ya existente) ----------
-  const loadBestPricesAndOpen = async (query: string) => {
-    const q = query.trim();
-    if (!q) return;
+  const enabled = useMemo(() => sourcesToEnabled(sources || {}), [sources]);
 
-    setSheetErr(null);
-    setHits([]);
-    setSheetLoading(true);
+  const setRow = (idx: number, patch: Partial<Row>) =>
+    setRows((prev) => {
+      const next = [...prev];
+      if (next[idx]) next[idx] = { ...next[idx], ...patch };
+      return next;
+    });
+
+  // --- LÓGICA DE ACCIONES (DE TU CÓDIGO ORIGINAL) ---
+  const showSheet = () => {
     setSheetVisible(true);
-
-    // animate in
     Animated.parallel([
-      Animated.timing(sheetY, {
-        toValue: 0,
-        duration: 260,
-        easing: Easing.out(Easing.cubic),
-        useNativeDriver: true,
-      }),
-      Animated.timing(backdrop, {
-        toValue: 1,
-        duration: 180,
-        easing: Easing.out(Easing.cubic),
-        useNativeDriver: true,
-      }),
+      Animated.timing(sheetY, { toValue: 0, duration: 260, easing: Easing.out(Easing.cubic), useNativeDriver: Platform.OS !== 'web' }),
+      Animated.timing(backdrop, { toValue: 1, duration: 180, useNativeDriver: Platform.OS !== 'web' }),
     ]).start();
-
-    try {
-      if (loadingSources || !sources) {
-        await loadSources();
-      }
-      const enabledNow = sourcesToEnabled(sources || { carrefour: true, coto: true, jumbo: true, dia: true });
-
-      const data = await searchAll({ q, limit: 2, enabled: enabledNow });
-      const ordered = flattenSearch(data as SearchRawResponse).slice(0, 10);
-      setHits(ordered);
-    } catch (e: any) {
-      setSheetErr(e?.data?.detail || e?.message || "No se pudieron obtener precios.");
-    } finally {
-      setSheetLoading(false);
-    }
   };
 
-  // --------- 🚀 NUEVO: mejores precios por BARCODE ----------
-  const loadBestPricesByBarcodeAndOpen = async (barcode: string) => {
-    const ean = onlyDigits(barcode);
-    if (!ean) return;
-
-    setSheetErr(null);
-    setHits([]);
-    setSheetLoading(true);
-    setSheetVisible(true);
-
-    // animate in
+  const hideSheet = useCallback(() => {
     Animated.parallel([
-      Animated.timing(sheetY, {
-        toValue: 0,
-        duration: 260,
-        easing: Easing.out(Easing.cubic),
-        useNativeDriver: true,
-      }),
-      Animated.timing(backdrop, {
-        toValue: 1,
-        duration: 180,
-        easing: Easing.out(Easing.cubic),
-        useNativeDriver: true,
-      }),
-    ]).start();
-
-    try {
-      if (loadingSources || !sources) {
-        await loadSources();
-      }
-      const enabledNow = sourcesToEnabled(sources || { carrefour: true, coto: true, jumbo: true, dia: true });
-
-      // 👇 mismo endpoint, pero con { barcode }
-      const data = await searchAll({ barcode: ean, limit: 2, enabled: enabledNow });
-      const ordered = flattenSearch(data as SearchRawResponse).slice(0, 10);
-      setHits(ordered);
-    } catch (e: any) {
-      setSheetErr(e?.data?.detail || e?.message || "No se pudieron obtener precios.");
-    } finally {
-      setSheetLoading(false);
-    }
-  };
-
-  const hideSheet = React.useCallback(() => {
-    Animated.parallel([
-      Animated.timing(sheetY, {
-        toValue: 1,
-        duration: 220,
-        easing: Easing.in(Easing.cubic),
-        useNativeDriver: true,
-      }),
-      Animated.timing(backdrop, {
-        toValue: 0,
-        duration: 180,
-        easing: Easing.in(Easing.cubic),
-        useNativeDriver: true,
-      }),
+      Animated.timing(sheetY, { toValue: SHEET_HEIGHT, duration: 220, easing: Easing.in(Easing.cubic), useNativeDriver: Platform.OS !== 'web' }),
+      Animated.timing(backdrop, { toValue: 0, duration: 180, useNativeDriver: Platform.OS !== 'web' }),
     ]).start(({ finished }) => {
-      if (finished) {
-        setSheetVisible(false);
-        setHits([]);
-        setSheetErr(null);
-        setSheetLoading(false);
-      }
+      if (finished) { setSheetVisible(false); setHits([]); setSheetErr(null); setSheetLoading(false); }
     });
   }, [backdrop, sheetY]);
 
-  const onCartPress = (query: string) => {
-    loadBestPricesAndOpen(query);
+  const onCartPress = async (query: string) => {
+    const q = query.trim();
+    if (!q) return;
+    setSheetErr(null);
+    setHits([]);
+    setSheetLoading(true);
+    showSheet();
+    try {
+      if (loadingSources || !sources) await loadSources();
+      const enabledNow = sourcesToEnabled(sources || {});
+      const data = await searchAll({ q, limit: 2, enabled: enabledNow });
+      setHits(flattenSearch(data as SearchRawResponse).slice(0, 10));
+    } catch (e: any) {
+      setSheetErr(e?.message || "No se pudieron obtener precios.");
+    } finally {
+      setSheetLoading(false);
+    }
+  };
+
+  const loadBestPricesByBarcodeAndOpen = async (barcode: string) => {
+    const ean = onlyDigits(barcode);
+    if (!ean) return;
+    setSheetErr(null);
+    setHits([]);
+    setSheetLoading(true);
+    showSheet();
+    try {
+      if (loadingSources || !sources) await loadSources();
+      const enabledNow = sourcesToEnabled(sources || {});
+      const data = await searchAllBarcode(ean, 3, enabledNow);
+      setHits(flattenSearch(data as SearchRawResponse).slice(0, 10));
+    } catch (e: any) {
+      setSheetErr(e?.message || "No se pudieron obtener precios.");
+    } finally {
+      setSheetLoading(false);
+    }
+  };
+
+  const onBarcodeDetected = async ({ data }: { data: string }) => {
+    if (hasScanned) return;
+    const ean = onlyDigits(data);
+    if (!ean) return;
+    setHasScanned(true);
+    setScannerVisible(false);
+    await loadBestPricesByBarcodeAndOpen(ean);
+    try {
+      if (hits.length > 0 && scanningRowIdx != null) {
+        setRow(scanningRowIdx, { _nombre: hits[0].name ?? rows[scanningRowIdx].nombre });
+      }
+    } catch { }
+    setScanningRowIdx(null);
+  };
+
+  const startScanForRow = async (idx: number) => {
+    setScanningRowIdx(idx);
+    if (!permission?.granted) {
+      const { granted } = await requestPermission();
+      if (!granted) return Alert.alert("Permiso requerido", "Necesitamos acceso a la cámara para escanear el código.");
+    }
+    setHasScanned(false);
+    setScannerVisible(true);
   };
 
   const confirmDeleteList = () => {
-    Alert.alert("Eliminar lista", "¿Querés borrar esta lista y todos sus productos?", [
-      { text: "Cancelar", style: "cancel" },
+    Alert.alert("Eliminar lista", `¿Quieres borrar "${listName}"?`, [
+      { text: "Cancelar" },
       {
-        text: "Eliminar",
-        style: "destructive",
-        onPress: async () => {
-          try {
-            await apiDeleteList(listId);
-            router.back();
-          } catch (e: any) {
-            Alert.alert("Error", e?.data?.detail || e?.message || "No se pudo eliminar la lista.");
-          }
-        },
+        text: "Eliminar", style: "destructive", onPress: async () => {
+          try { await apiDeleteList(listId); router.back(); }
+          catch (e: any) { Alert.alert("Error", e?.message || "No se pudo eliminar la lista."); }
+        }
       },
     ]);
   };
@@ -351,16 +264,9 @@ export default function ListDetailScreen() {
       const out = await apiRenameList(listId, { nombre });
       setListName(out.nombre);
     } catch (e: any) {
-      Alert.alert("Error", e?.data?.detail || e?.message || "No se pudo renombrar la lista.");
+      Alert.alert("Error", e?.message || "No se pudo renombrar la lista.");
     }
   };
-
-  const setRow = (idx: number, patch: Partial<Row>) =>
-    setRows((prev) => {
-      const next = [...prev];
-      next[idx] = { ...next[idx], ...patch };
-      return next;
-    });
 
   const toggleChecked = async (idx: number) => {
     const r = rows[idx];
@@ -371,7 +277,7 @@ export default function ListDetailScreen() {
       setRow(idx, { done: updated.done, _checked: updated.done, _saving: false });
     } catch (e: any) {
       setRow(idx, { _checked: !next, done: !next, _saving: false });
-      Alert.alert("Error", e?.data?.detail || e?.message || "No se pudo actualizar el estado.");
+      Alert.alert("Error", e?.message || "No se pudo actualizar el estado.");
     }
   };
 
@@ -383,581 +289,372 @@ export default function ListDetailScreen() {
     const patch: { nombre?: string; cantidad?: string | null } = {};
     if (r._nombre.trim() !== r.nombre) patch.nombre = r._nombre.trim();
     if (r._cantidad.trim() !== r.cantidad) patch.cantidad = r._cantidad.trim() || "1";
-    if (!patch.nombre && !patch.cantidad) return;
-
+    if (Object.keys(patch).length === 0) return;
     try {
       setRow(idx, { _saving: true });
       const updated = await apiUpdateItem(r.id, patch);
       setRow(idx, {
-        nombre: updated.nombre,
-        cantidad: updated.cantidad,
-        done: updated.done,
-        _nombre: updated.nombre,
-        _cantidad: updated.cantidad,
-        _checked: updated.done,
+        nombre: updated.nombre, cantidad: updated.cantidad, done: updated.done,
+        _nombre: updated.nombre, _cantidad: updated.cantidad, _checked: updated.done,
         _saving: false,
       });
     } catch (e: any) {
       setRow(idx, { _saving: false });
-      Alert.alert("Error", e?.data?.detail || e?.message || "No se pudo guardar el producto.");
+      Alert.alert("Error", e?.message || "No se pudo guardar el producto.");
     }
   };
 
   const confirmDeleteRow = (idx: number) => {
     const r = rows[idx];
-    Alert.alert("Eliminar producto", `¿Querés borrar "${r.nombre}"?`, [
-      { text: "Cancelar", style: "cancel" },
+    Alert.alert("Eliminar producto", `¿Quieres borrar "${r.nombre}"?`, [
+      { text: "Cancelar" },
       {
-        text: "Eliminar",
-        style: "destructive",
-        onPress: async () => {
+        text: "Eliminar", style: "destructive", onPress: async () => {
           try {
             setRow(idx, { _deleting: true });
             await apiDeleteItem(r.id);
             setRows((prev) => prev.filter((x) => x.id !== r.id));
           } catch (e: any) {
             setRow(idx, { _deleting: false });
-            Alert.alert("Error", e?.data?.detail || e?.message || "No se pudo eliminar el producto.");
+            Alert.alert("Error", e?.message || "No se pudo eliminar el producto.");
           }
-        },
+        }
       },
     ]);
   };
 
-  const [scannerVisible, setScannerVisible] = useState(false);
-  const [scanningRowIdx, setScanningRowIdx] = useState<number | null>(null);
-  const [permission, requestPermission] = useCameraPermissions();
-  const [hasScanned, setHasScanned] = useState(false); // evita doble trigger
-
-  const startScanForRow = async (idx: number) => {
-    setScanningRowIdx(idx);
-    if (!permission?.granted) {
-      const { granted } = await requestPermission();
-      if (!granted) {
-        Alert.alert("Permiso requerido", "Necesitamos acceso a la cámara para escanear el código.");
-        return;
-      }
-    }
-    setHasScanned(false);
-    setScannerVisible(true);
-  };
-
-  const onBarcodeDetected = async ({ data }: { data: string; raw?: any; type?: string }) => {
-    if (hasScanned) return;
-    const ean = onlyDigits(data);
-    if (!ean) return;
-
-    setHasScanned(true);
-    setScannerVisible(false);
-
-    // 🔎 buscar por barcode y abrir sheet con resultados
-    await loadBestPricesByBarcodeAndOpen(ean);
-
-    try {
-     if (hits.length > 0 && scanningRowIdx != null) {
-         const first = hits[0];
-         setRow(scanningRowIdx, { _nombre: first.name ?? rows[scanningRowIdx].nombre });
-       }
-     } catch {}
-    setScanningRowIdx(null);
-  };
-
-  // agregar ítem a la lista existente
   const addNewItem = async () => {
     if (adding) return;
     const nombre = newNombre.trim();
-    const cantidad = (newCantidad || "1").trim();
     if (!nombre) {
-      Alert.alert("Falta producto", "Ingresá el nombre del producto.");
+      Alert.alert("Falta producto", "Ingresa el nombre del producto.");
       return;
     }
     try {
       setAdding(true);
-      const maybeCreated = (await apiAddItem(listId, { nombre, cantidad })) as any;
-      if (maybeCreated && typeof maybeCreated === "object") {
-        const created = maybeCreated as ShoppingItemOut;
-        setRows((prev) => [
-          { ...created, _checked: created.done, _nombre: created.nombre, _cantidad: created.cantidad },
-          ...prev,
-        ]);
-      } else {
-        await load();
-      }
+      const created = (await apiAddItem(listId, { nombre, cantidad: newCantidad.trim() || "1" })) as ShoppingItemOut;
+      setRows((prev) => [
+        { ...created, _checked: created.done, _nombre: created.nombre, _cantidad: created.cantidad },
+        ...prev,
+      ]);
       setNewNombre("");
       setNewCantidad("");
     } catch (e: any) {
-      Alert.alert("Error", e?.data?.detail || e?.message || "No se pudo agregar el producto.");
+      Alert.alert("Error", e?.message || "No se pudo agregar el producto.");
     } finally {
       setAdding(false);
     }
   };
 
   const renderItem = ({ item, index }: { item: Row; index: number }) => (
-    <View
-      style={{
-        paddingVertical: 8,
-        paddingHorizontal: spacing.md,
-        borderBottomWidth: 1,
-        borderBottomColor: "#E9EEF5",
-        flexDirection: "row",
-        alignItems: "center",
-        gap: 10,
-      }}
+    <Animated.View
+      entering={FadeInUp.duration(400).delay(index * 50)}
+      style={[styles.itemCard, { backgroundColor: colors.white, borderColor: colors.border, opacity: item._deleting ? 0.5 : 1 }]}
     >
-      {/* Checklist */}
-      <Pressable onPress={() => toggleChecked(index)} hitSlop={10}>
-        <Ionicons
-          name={item._checked ? "checkbox-outline" : "square-outline"}
-          size={22}
-          color={item._checked ? colors.primary : colors.gray500}
-        />
+      <Pressable onPress={() => toggleChecked(index)} hitSlop={10} style={{ paddingRight: spacing.sm }}>
+        <Ionicons name={item.done ? "checkbox" : "square-outline"} size={24} color={item.done ? colors.gray200 : colors.primary} />
       </Pressable>
 
-      {/* Nombre */}
-      <View style={{ flex: 1, opacity: item._deleting ? 0.5 : 1 }}>
+      {/* Nombre y Cantidad en la MISMA fila */}
+      <View style={styles.itemRow}>
         <TextInput
           value={item._nombre}
           onChangeText={(t) => onChangeNombre(index, t)}
           onEndEditing={() => saveRowIfChanged(index)}
           placeholder="Producto"
-          style={{
-            paddingVertical: 6,
-            paddingHorizontal: 10,
-            backgroundColor: "#FAFBFC",
-            borderWidth: 1,
-            borderColor: "#E9EEF5",
-            borderRadius: 10,
-          }}
+          style={[styles.itemProduct, item.done && styles.itemDone, { color: colors.text }]}
         />
-      </View>
-
-      {/* Cantidad */}
-      <View style={{ width: 90, opacity: item._deleting ? 0.5 : 1 }}>
         <TextInput
           value={item._cantidad}
           onChangeText={(t) => onChangeCantidad(index, t)}
           onEndEditing={() => saveRowIfChanged(index)}
           placeholder="Cant."
           keyboardType="numeric"
-          style={{
-            paddingVertical: 6,
-            textAlign: "center",
-            backgroundColor: "#FAFBFC",
-            borderWidth: 1,
-            borderColor: "#E9EEF5",
-            borderRadius: 10,
-          }}
+          style={[styles.itemQty, item.done && styles.itemDone, { color: colors.primary }]}
         />
       </View>
 
-      {/* Guardando… */}
-      {item._saving ? <ActivityIndicator /> : null}
-
-      {/* Carrito (por nombre) */}
-      <Pressable
-        onPress={() => onCartPress(item._nombre || item.nombre)}
-        hitSlop={10}
-        disabled={item._deleting}
-        style={{ paddingHorizontal: 6, paddingVertical: 4 }}
-      >
-        <Ionicons name="cart-outline" size={20} color={item._deleting ? colors.gray400 : colors.secondary} />
-      </Pressable>
-
-      {/* Eliminar */}
-      <Pressable onPress={() => confirmDeleteRow(index)} hitSlop={10} disabled={item._deleting}>
-        <Ionicons name="trash-outline" size={20} color={item._deleting ? colors.gray400 : (colors.tertiary ?? "#ef4444")} />
-      </Pressable>
-
-      {/* 📷 Escáner por fila (por barcode) */}
-      <Pressable onPress={() => startScanForRow(index)} hitSlop={10} disabled={item._deleting}>
-        <MaterialCommunityIcons name="barcode-scan" size={22} color={colors.tertiary} />
-      </Pressable>
-    </View>
+      {item._saving ? (
+        <ActivityIndicator size="small" style={{ marginHorizontal: 8 }} />
+      ) : (
+        <View style={styles.itemActions}>
+          <Pressable onPress={() => onCartPress(item._nombre || item.nombre)} style={styles.actionIcon} disabled={item._deleting}>
+            <Ionicons name="cart-outline" size={24} color={colors.secondary} />
+          </Pressable>
+          <Pressable onPress={() => startScanForRow(index)} style={styles.actionIcon} disabled={item._deleting}>
+            <MaterialCommunityIcons name="barcode-scan" size={24} color={colors.tertiary} />
+          </Pressable>
+          <Pressable onPress={() => confirmDeleteRow(index)} style={styles.actionIcon} disabled={item._deleting}>
+            <Ionicons name="trash-outline" size={22} color={colors.error} />
+          </Pressable>
+        </View>
+      )}
+    </Animated.View>
   );
 
-  // Animated transforms
-  const translateY = sheetY.interpolate({
-    inputRange: [0, 1],
-    outputRange: [0, SHEET_HEIGHT + 40],
-  });
+  // paddingTop dinámico para no tapar la lista con los elementos fijos
+  const contentTopPad = insets.top + HEADER_H + ADD_BAR_H + 12;
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: colors.white }} edges={["top", "bottom"]}>
-      <KeyboardAvoidingView
-        style={{ flex: 1 }}
-        behavior={Platform.select({ ios: "padding", android: "height" })}
-        keyboardVerticalOffset={Platform.select({ ios: headerH, android: headerH })}
-      >
-        {loading ? (
-          <View style={{ flex: 1, alignItems: "center", justifyContent: "center" }}>
-            <ActivityIndicator />
+    <View style={[styles.root, { backgroundColor: colors.background }]}>
+      <SafeAreaView style={styles.safeArea} edges={["top", "bottom"]}>
+        {/* HEADER FIJO con fondo primario */}
+        <View style={[styles.headerContainer, { paddingTop: insets.top, backgroundColor: colors.primary }]}>
+          <Pressable onPress={() => router.back()} style={styles.backButton}>
+            <Ionicons name="chevron-back" size={28} color={"#FFFFFF"} />
+          </Pressable>
+
+          <View style={styles.titleContainer}>
+            {editingName ? (
+              <TextInput
+                value={listName}
+                onChangeText={setListName}
+                style={styles.titleInput}
+                autoFocus
+                onBlur={onEndEditListName}
+                placeholder="Nueva lista"
+                placeholderTextColor={"#FFFFFFCC"}
+              />
+            ) : (
+              <Text style={styles.titleText} numberOfLines={1}>{listName}</Text>
+            )}
+            <Pressable onPress={() => setEditingName(s => !s)} style={{ paddingLeft: 6 }}>
+              <Ionicons name="create-outline" size={22} color={"#FFFFFFCC"} />
+            </Pressable>
           </View>
-        ) : error ? (
-          <View style={{ flex: 1, alignItems: "center", justifyContent: "center", padding: spacing.md }}>
-            <Text style={{ color: colors.error, textAlign: "center" }}>{error}</Text>
+
+          <Pressable onPress={confirmDeleteList} style={styles.deleteListButton}>
+            <Ionicons name="trash-outline" size={24} color={"#FFFFFFCC"} />
+          </Pressable>
+        </View>
+
+        {/* BARRA “AÑADIR PRODUCTO” FIJA debajo del header */}
+        <View style={[styles.addBarFixed, { top: insets.top + HEADER_H }]}>
+          <View style={[styles.inputBar, { backgroundColor: colors.white, borderColor: colors.border }]}>
+            <TextInput
+              placeholder="Añadir producto..."
+              value={newNombre}
+              onChangeText={setNewNombre}
+              onSubmitEditing={addNewItem}
+              returnKeyType="done"
+              style={[styles.textInput, { flex: 1, backgroundColor: colors.background }]}
+              placeholderTextColor={colors.gray400}
+            />
+            <TextInput
+              placeholder="Cant."
+              value={newCantidad}
+              onChangeText={setNewCantidad}
+              keyboardType="numeric"
+              style={[styles.textInput, styles.textInputQty]}
+              placeholderTextColor={colors.gray400}
+            />
+            <Pressable
+              onPress={addNewItem}
+              disabled={!newNombre.trim() || adding}
+              style={[styles.submitButton, { backgroundColor: (newNombre.trim() && !adding) ? colors.primary : colors.gray100 }]}
+            >
+              {adding ? <ActivityIndicator color={"#FFFFFF"} /> : <Ionicons name="add" size={28} color={"#FFFFFF"} />}
+            </Pressable>
           </View>
-        ) : (
+        </View>
+
+        <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === "ios" ? "padding" : "height"}>
           <FlatList
             data={rows}
-            keyExtractor={(it) => String(it.id)}
+            keyExtractor={(item) => String(item.id)}
+            contentContainerStyle={[styles.listContainer, { paddingTop: contentTopPad }]}
             renderItem={renderItem}
-            keyboardShouldPersistTaps="handled"
-            keyboardDismissMode="on-drag"
-            refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
-            contentContainerStyle={{ paddingBottom: insets.bottom + 24 }}
-            ListHeaderComponent={
-              <View style={{ backgroundColor: "#fff" }}>
-                {/* Header de la lista */}
-                <View
-                  style={{
-                    paddingHorizontal: spacing.md,
-                    paddingTop: spacing.md,
-                    paddingBottom: spacing.sm,
-                    borderBottomWidth: 1,
-                    borderBottomColor: "#E9EEF5",
-                  }}
-                >
-                  <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
-                    <View style={{ flex: 1, flexDirection: "row", alignItems: "center", gap: 8 }}>
-                      {editingName ? (
-                        <TextInput
-                          value={listName}
-                          onChangeText={setListName}
-                          onEndEditing={onEndEditListName}
-                          autoFocus
-                          style={{ fontSize: 20, fontWeight: "800", color: colors.secondary, paddingVertical: 2 }}
-                        />
-                      ) : (
-                        <Text style={{ fontSize: 20, fontWeight: "800", color: colors.secondary }}>{listName}</Text>
-                      )}
-                      <Pressable onPress={() => setEditingName((s) => !s)} hitSlop={10}>
-                        <Ionicons name="create-outline" size={18} color={colors.secondary} />
-                      </Pressable>
-                    </View>
-
-                    <Pressable onPress={confirmDeleteList} hitSlop={10}>
-                      <Ionicons name="trash-outline" size={20} color={colors.tertiary ?? "#ef4444"} />
-                    </Pressable>
-                  </View>
-
-                  {!!createdAt && (
-                    <Text style={{ color: colors.gray600, marginTop: 4, fontSize: 12 }}>
-                      Creada: {createdAt}
-                    </Text>
-                  )}
-                </View>
-
-                {/* Barra para AGREGAR ítems */}
-                <View
-                  style={{
-                    paddingHorizontal: spacing.md,
-                    paddingTop: spacing.sm,
-                    paddingBottom: spacing.sm,
-                    backgroundColor: "#fff",
-                    borderBottomWidth: 1,
-                    borderBottomColor: "#E9EEF5",
-                  }}
-                >
-                  <View
-                    style={{
-                      backgroundColor: "#fff",
-                      borderWidth: 1,
-                      borderColor: "#E9EEF5",
-                      borderRadius: 12,
-                      padding: 8,
-                      flexDirection: "row",
-                      alignItems: "center",
-                      gap: 8,
-                    }}
-                  >
-                    <TextInput
-                      value={newNombre}
-                      onChangeText={setNewNombre}
-                      placeholder="Producto"
-                      returnKeyType="done"
-                      onSubmitEditing={() => {
-                        if (newNombre.trim()) addNewItem();
-                      }}
-                      style={{
-                        flex: 1,
-                        paddingVertical: 8,
-                        paddingHorizontal: 10,
-                        backgroundColor: "#FAFBFC",
-                        borderWidth: 1,
-                        borderColor: "#E9EEF5",
-                        borderRadius: 10,
-                      }}
-                    />
-                    <TextInput
-                      value={newCantidad}
-                      onChangeText={setNewCantidad}
-                      placeholder="Cant."
-                      keyboardType="numeric"
-                      style={{
-                        width: 80,
-                        paddingVertical: 8,
-                        textAlign: "center",
-                        backgroundColor: "#FAFBFC",
-                        borderWidth: 1,
-                        borderColor: "#E9EEF5",
-                        borderRadius: 10,
-                      }}
-                    />
-                    <Pressable
-                      onPress={addNewItem}
-                      disabled={!newNombre.trim() || adding}
-                      style={{
-                        width: 44,
-                        height: 44,
-                        borderRadius: 999,
-                        alignItems: "center",
-                        justifyContent: "center",
-                        backgroundColor: colors.primary,
-                        opacity: !newNombre.trim() || adding ? 0.5 : 1,
-                      }}
-                    >
-                      {adding ? <ActivityIndicator color="#fff" /> : <Ionicons name="add" size={22} color="#fff" />}
-                    </Pressable>
-                  </View>
-                </View>
+            ListEmptyComponent={
+              <View style={styles.emptyContainer}>
+                <Ionicons name="file-tray-stacked-outline" size={60} color={colors.gray200} />
+                <Text style={[styles.emptyText, { color: colors.gray400 }]}>Agrega productos para empezar.</Text>
               </View>
             }
-            stickyHeaderIndices={[0]}
+            refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
           />
-        )}
-      </KeyboardAvoidingView>
+        </KeyboardAvoidingView>
+      </SafeAreaView>
 
-      {/* Bottom Sheet: mejores precios */}
+      {/* Sheet de resultados */}
       <Modal visible={sheetVisible} transparent animationType="none" onRequestClose={hideSheet}>
-        {/* Backdrop */}
-        <Animated.View
-          style={{
-            flex: 1,
-            backgroundColor: "rgba(0,0,0,0.25)",
-            opacity: backdrop,
-          }}
-        >
-          <Pressable style={{ flex: 1 }} onPress={hideSheet} />
-        </Animated.View>
-
-        {/* Sheet */}
-        <Animated.View
-          style={{
-            position: "absolute",
-            left: 0,
-            right: 0,
-            bottom: 0,
-            transform: [{ translateY }],
-          }}
-        >
-          <View
-            style={{
-              backgroundColor: "#fff",
-              borderTopLeftRadius: 16,
-              borderTopRightRadius: 16,
-              padding: 16,
-              height: SHEET_HEIGHT,
-              shadowColor: "#000",
-              shadowOpacity: 0.1,
-              shadowRadius: 10,
-              elevation: 8,
-              gap: 10,
-            }}
-          >
-            {/* header */}
-            <View style={{ flexDirection: "row", alignItems: "center" }}>
-              <Text style={{ flex: 1, fontSize: 16, fontWeight: "800", color: colors.tertiary }}>
-                Mejores resultados
-              </Text>
-              <Pressable onPress={hideSheet} hitSlop={8}>
-                <Ionicons name="close" size={20} color={colors.gray600} />
-              </Pressable>
-            </View>
-
-            {/* resultados */}
-            {sheetLoading ? (
-              <View style={{ flex: 1, alignItems: "center", justifyContent: "center" }}>
-                <ActivityIndicator />
-              </View>
-            ) : sheetErr ? (
-              <Text style={{ color: colors.error }}>{sheetErr}</Text>
-            ) : (
-              <FlatList
-                // ⬇️ Filtro: solo con name y url
-                data={hits.filter((h) => !!h.name && !!h.url)}
-                keyExtractor={(h, i) => `${h.store}-${h.url}-${i}`}
-                contentContainerStyle={{ paddingBottom: 4, gap: 10 }}
-                showsVerticalScrollIndicator
-                renderItem={({ item: h }) => (
-                  <Pressable
-                    onPress={() => Linking.openURL(h.url!)}
-                    style={{
-                      backgroundColor: "#FAFBFC",
-                      borderWidth: 1,
-                      borderColor: "#E9EEF5",
-                      borderRadius: 12,
-                      padding: 10,
-                      flexDirection: "row",
-                      alignItems: "center",
-                      gap: 12,
-                    }}
-                  >
-                    {h.image_url ? (
-                      <Image
-                        source={{ uri: h.image_url }}
-                        style={{ width: 64, height: 64, borderRadius: 8, resizeMode: "contain" }}
-                      />
-                    ) : (
-                      <View
-                        style={{
-                          width: 64,
-                          height: 64,
-                          borderRadius: 8,
-                          backgroundColor: "#EFEFF2",
-                          alignItems: "center",
-                          justifyContent: "center",
-                        }}
-                      >
-                        <Ionicons name="image-outline" size={24} color={colors.gray500} />
-                      </View>
-                    )}
-
-                    <View style={{ flex: 1 }}>
-                      <Text numberOfLines={1} style={{ fontWeight: "700", color: colors.secondary, fontSize: 14 }}>
-                        {h.name}
-                      </Text>
-                      <Text style={{ color: colors.gray600, marginTop: 2, fontSize: 14 }}>
-                        {h.store.toLocaleUpperCase()}
-                      </Text>
-                      {!!h.barcode && (
-                        <Text style={{ color: colors.gray600, marginTop: 2, fontSize: 12 }}>
-                          EAN: {h.barcode}
-                        </Text>
-                      )}
-                    </View>
-
-                    {/* Precio + PROMO badge */}
-                    <View style={{ alignItems: "flex-end", gap: 6 }}>
-                      <Text style={{ fontSize: 18, fontWeight: "900", color: colors.primary }}>
-                        ${Number(h.price ?? 0).toLocaleString("es-AR")}
-                      </Text>
-
-                      {h.promotion ? (
-                        <View
-                          style={{
-                            paddingHorizontal: 8,
-                            paddingVertical: 2,
-                            borderRadius: 999,
-                            backgroundColor: "#FFDD61", // Advertencia
-                          }}
-                        >
-                          <Text
-                            numberOfLines={1}
-                            style={{ fontSize: 11, fontWeight: "800", color: "#4A5899" /* Terciario */ }}
-                          >
-                            {h.promotion}
-                          </Text>
-                        </View>
-                      ) : null}
-                    </View>
-                  </Pressable>
-                )}
-                ListEmptyComponent={<Text style={{ color: colors.gray600 }}>Sin resultados.</Text>}
-              />
-            )}
+        <Pressable style={StyleSheet.absoluteFill} onPress={hideSheet}>
+          <Animated.View style={[styles.backdrop, { opacity: backdrop }]} />
+        </Pressable>
+        <Animated.View style={[styles.sheet, { backgroundColor: colors.white, transform: [{ translateY: sheetY }] }]}>
+          <View style={[styles.sheetHeader, { borderBottomColor: colors.border }]}>
+            <Text style={styles.sheetTitle}>Mejores resultados</Text>
+            <Pressable onPress={hideSheet}><Ionicons name="close" size={24} color={colors.gray400} /></Pressable>
           </View>
+          {sheetLoading ? (
+            <ActivityIndicator style={{ flex: 1 }} />
+          ) : sheetErr ? (
+            <Text style={styles.errorText}>{sheetErr}</Text>
+          ) : (
+            <FlatList
+              data={hits}
+              keyExtractor={(h, i) => `${h.store}-${h.url}-${i}`}
+              renderItem={({ item: h }) => (
+                <Pressable onPress={() => Linking.openURL(h.url!)} style={[styles.hitCard, { borderColor: colors.border }]}>
+                  <Image src={h.image_url } style={styles.hitImage} />
+                  <View style={styles.hitTextContainer}>
+                  <Text numberOfLines={1} style={[styles.hitName, { color: colors.text }]}>
+                    {h.name}
+                  </Text>
+                  <Text style={[styles.hitStore, { color: colors.gray400 }]}>
+                    {h.store.toUpperCase()}
+                  </Text>
+                  </View>
+                  <Text style={[styles.hitPrice, { color: colors.primary }]}>
+                    ${Number(h.price ?? 0).toLocaleString("es-AR")}
+                  </Text>
+                </Pressable>
+              )}
+            />
+          )}
         </Animated.View>
       </Modal>
 
-      {/* 📱 Modal del ESCÁNER */}
-      <Modal
-        visible={scannerVisible}
-        transparent
-        animationType="fade"
-        onRequestClose={() => {
-          setScannerVisible(false);
-          setScanningRowIdx(null);
-        }}
-      >
-        <View style={{ flex: 1, backgroundColor: "black" }}>
-          {/* Cámara en pantalla completa */}
-          {permission?.granted ? (
-            <CameraView
-              style={{ flex: 1 }}
-              facing="back"
-              onBarcodeScanned={(ev: any) => {
-                // ev: { data, type, cornerPoints, ... }
-                onBarcodeDetected({ data: ev?.data, type: ev?.type });
-              }}
-              barcodeScannerSettings={{
-                barcodeTypes: [
-                  "ean13",
-                  "ean8",
-                  "upc_a",
-                  "upc_e",
-                  "code128",
-                  "itf14",
-                  "code39",
-                  "codabar",
-                ],
-              }}
-            />
-          ) : (
-            <View style={{ flex: 1, alignItems: "center", justifyContent: "center" }}>
-              <ActivityIndicator color="#fff" />
-              <Text style={{ color: "#fff", marginTop: 8 }}>Solicitando permiso de cámara…</Text>
-            </View>
-          )}
-
-          {/* Overlay y controles */}
-          <View
-            style={{
-              position: "absolute",
-              left: 0,
-              right: 0,
-              top: 0,
-              paddingTop: insets.top + 12,
-              paddingHorizontal: 12,
-              flexDirection: "row",
-              justifyContent: "space-between",
-              alignItems: "center",
-            }}
-          >
-            <Pressable
-              onPress={() => {
-                setScannerVisible(false);
-                setScanningRowIdx(null);
-              }}
-              style={{
-                backgroundColor: "rgba(0,0,0,0.5)",
-                paddingHorizontal: 12,
-                paddingVertical: 8,
-                borderRadius: 999,
-              }}
-            >
-              <Ionicons name="close" size={22} color="#fff" />
-            </Pressable>
-
-            <View style={{ backgroundColor: "rgba(0,0,0,0.5)", paddingHorizontal: 10, paddingVertical: 6, borderRadius: 999 }}>
-              <Text style={{ color: "#fff", fontWeight: "700" }}>Apuntá al código de barras</Text>
-            </View>
+      {/* Scanner */}
+      <Modal visible={scannerVisible} transparent animationType="fade" onRequestClose={() => setScannerVisible(false)}>
+        <View style={styles.scannerContainer}>
+          {permission?.granted ? <CameraView style={StyleSheet.absoluteFill} onBarcodeScanned={onBarcodeDetected} /> : <Text style={{ color: 'white' }}>Pidiendo permiso...</Text>}
+          <View style={[styles.scannerOverlay, { paddingTop: insets.top }]}>
+            <Pressable onPress={() => setScannerVisible(false)} style={styles.scannerCloseButton}><Ionicons name="close" size={28} color="white" /></Pressable>
+            <View style={styles.scannerFocusFrame} />
+            <Text style={styles.scannerText}>Apunta al código de barras</Text>
           </View>
-
-          {/* Marco guía simple */}
-          <View
-            style={{
-              position: "absolute",
-              left: 24,
-              right: 24,
-              top: "35%",
-              height: 180,
-              borderWidth: 2,
-              borderColor: "rgba(255,255,255,0.9)",
-              borderRadius: 12,
-            }}
-          />
         </View>
       </Modal>
-    </SafeAreaView>
+    </View>
   );
 }
+
+const styles = StyleSheet.create({
+  root: { flex: 1 },
+  safeArea: { flex: 1 },
+
+  // HEADER FIJO
+  headerContainer: {
+    position: 'absolute',
+    top: 0, left: 0, right: 0,
+    height: HEADER_H,
+    zIndex: 20,
+    paddingHorizontal: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  backButton: { padding: 8 },
+  titleContainer: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center' },
+  titleText: { fontSize: 20, fontWeight: 'bold', color: 'white', textAlign: 'center' },
+  titleInput: { fontSize: 20, fontWeight: 'bold', color: 'white', textAlign: 'center', paddingVertical: 6, paddingHorizontal: 10 },
+  deleteListButton: { padding: 8 },
+
+  // ADD BAR FIJA
+  addBarFixed: {
+    position: 'absolute',
+    left: 0, right: 0,
+    height: ADD_BAR_H,
+    zIndex: 19,
+    paddingHorizontal: 12,
+    justifyContent: 'center',
+  },
+
+  // Lista
+  listContainer: {
+    paddingHorizontal: 16,
+    paddingBottom: 24,
+  },
+
+  // Barra de inputs
+  inputBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 10,
+    borderRadius: 14,
+    gap: 8,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.08,
+    shadowRadius: 10,
+    elevation: 5,
+    borderWidth: 1,
+  },
+  textInput: {
+    height: 44,
+    fontSize: 16,
+    paddingHorizontal: 14,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: 'transparent',
+  },
+  textInputQty: {
+    width: 56,          // ACHICADO
+    textAlign: 'center' // centrado
+  },
+  submitButton: {
+    width: 44, height: 44,
+    borderRadius: 10, alignItems: 'center', justifyContent: 'center',
+  },
+
+  emptyContainer: { paddingTop: '20%', alignItems: 'center' },
+  emptyText: { textAlign: 'center', marginTop: 16, fontSize: 18, fontWeight: '600', opacity: 0.7 },
+
+  // Item
+  itemCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 8, paddingHorizontal: 12,
+    borderRadius: 16, borderWidth: 1, marginBottom: 12, gap: 8,
+  },
+
+  // FILA (nombre + cantidad MISMO renglón)
+  itemRow: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  itemProduct: {
+    flex: 1,
+    fontSize: 16,
+    fontWeight: '500',
+    paddingVertical: 4,
+    paddingHorizontal: 6,
+  },
+  itemQty: {
+    width: 68,          // ACHICADO
+    fontSize: 14,
+    textAlign: 'center',
+    paddingVertical: 4,
+    paddingHorizontal: 6,
+  },
+  itemDone: { textDecorationLine: 'line-through', opacity: 0.6 },
+  itemActions: { flexDirection: 'row', alignItems: 'center' },
+  actionIcon: { padding: 6 },
+
+  // Sheet
+  backdrop: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.4)' },
+  sheet: {
+    position: 'absolute', left: 0, right: 0, bottom: 0,
+    height: SHEET_HEIGHT,
+    borderTopLeftRadius: 20, borderTopRightRadius: 20,
+    elevation: 20, shadowColor: '#000', shadowOpacity: 0.2, shadowRadius: 10,
+  },
+  sheetHeader: { flexDirection: 'row', alignItems: 'center', padding: 16, borderBottomWidth: 1 },
+  sheetTitle: { flex: 1, fontSize: 18, fontWeight: 'bold' },
+  hitCard: { flexDirection: 'row', alignItems: 'center', padding: 10, gap: 12, borderBottomWidth: 1 },
+  hitImage: { width: 48, height: 48, borderRadius: 8, resizeMode: 'contain' },
+  hitTextContainer: { flex: 1 },
+  hitName: { fontWeight: '600' },
+  hitStore: { fontSize: 12, opacity: 0.7 },
+  hitPrice: { fontSize: 16, fontWeight: 'bold' },
+
+  // Scanner
+  scannerContainer: { flex: 1, backgroundColor: 'black' },
+  scannerOverlay: { flex: 1, justifyContent: 'space-between', alignItems: 'center' },
+  scannerCloseButton: { alignSelf: 'flex-start', margin: 16, backgroundColor: 'rgba(0,0,0,0.5)', borderRadius: 20, padding: 4 },
+  scannerFocusFrame: { width: '80%', height: '30%', borderWidth: 2, borderColor: 'white', borderRadius: 16 },
+  scannerText: { color: 'white', backgroundColor: 'rgba(0,0,0,0.5)', padding: 8, borderRadius: 6, marginBottom: 40 },
+
+  errorText: { padding: 16, textAlign: 'center' },
+});
