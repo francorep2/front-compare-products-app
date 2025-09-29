@@ -2,9 +2,9 @@ import { useLocalSearchParams, useRouter } from "expo-router";
 import { useEffect, useState } from "react";
 import { View, StyleSheet, ActivityIndicator, ScrollView, Text, Pressable } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { getComparisonResults } from "../../../api/endpoints";
-import type { ComparisonSummaryOut, StoreSummary } from "../../../api/types";
-import { useTheme } from "../../../providers/theme";
+import { getComparisonResults } from "../../../../api/endpoints";
+import type { ComparisonSummaryOut, StoreSummary } from "../../../../api/types";
+import { useTheme } from "../../../../providers/theme";
 import { Ionicons } from "@expo/vector-icons";
 import Animated, { FadeInUp, FadeIn } from "react-native-reanimated";
 
