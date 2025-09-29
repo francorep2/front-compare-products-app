@@ -1,5 +1,7 @@
 import { request } from "./clients";
 import type {
+  ComparisonRequestIn,
+  ComparisonTaskOut,
   // auth
   LoginStartIn, MeOut,
   PasswordResetConfirmIn, PasswordResetResendOut,
@@ -27,8 +29,8 @@ type SearchAllArgs = {
   q?: string;
   barcode?: string;
   limit?: number;
-  enabled?: string[] | string; // ej: ["carrefour","coto"] o "carrefour,coto"
-  stores?: string;             // compatibilidad legacy CSV
+  enabled?: string[] | string; 
+  stores?: string;             
 };
 
 // ---------- AUTH ----------
@@ -258,3 +260,17 @@ export function searchAllWithSources(opts: {
   const enabled = sourcesToEnabled(opts.sources);
   return searchAll({ q: opts.q, barcode: opts.barcode, limit: opts.limit, enabled });
 }
+
+
+export const startComparison = (data: ComparisonRequestIn): Promise<{ task_id: string }> => {
+  return request("/compare/start", {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+};
+
+export const getComparisonResults = (taskId: string): Promise<ComparisonTaskOut> => {
+  return request(`/compare/results/${taskId}`, {
+    method: "GET",
+  });
+};

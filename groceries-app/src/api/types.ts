@@ -168,3 +168,34 @@ export type ScrapeSources = {
   jumbo: boolean;
   dia: boolean;
 };
+
+// --- TIPOS PARA LA COMPARACIÓN DE LISTAS ---
+
+// Para enviar la petición a POST /compare/start
+export interface ComparisonItemIn {
+  nombre: string;
+  cantidad: number;
+}
+
+export interface ComparisonRequestIn {
+  items: ComparisonItemIn[];
+  enabled?: string[];
+}
+export interface StoreSummary {
+  total: number;
+  missing_count: number;
+  missing_items: string[];
+}
+
+export interface ComparisonSummaryOut {
+  totals_by_store: {
+    [key: string]: StoreSummary; 
+  };
+  winner: string | null;
+  updated_at: string;
+}
+
+export interface ComparisonTaskOut {
+  status: 'processing' | 'completed';
+  data: ComparisonSummaryOut | null;
+}
