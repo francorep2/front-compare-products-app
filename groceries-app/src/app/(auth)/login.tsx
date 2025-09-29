@@ -1,13 +1,12 @@
 import { Ionicons } from "@expo/vector-icons";
-import { useRouter } from "expo-router";
+import { Link, useRouter } from "expo-router";
 import { useMemo, useState } from "react";
-import { Alert, Dimensions, Image, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, TextInput, View } from "react-native";
+import { Alert, Dimensions, Image, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import Animated, { FadeInUp } from "react-native-reanimated";
 import Svg, { Defs, Path, Stop, LinearGradient as SvgGradient } from "react-native-svg";
 
 import { Button } from "../../components/ui/Button";
 import { PasswordInput } from "../../components/ui/PasswordInput";
-import { Text } from "../../components/ui/Text";
 import { useAuth } from "../../providers/auth";
 import { useTheme } from "../../providers/theme";
 
@@ -15,11 +14,10 @@ function isValidEmail(v: string) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v);
 }
 
-// --- Componente para el fondo de ola ---
 const WaveBackground = () => {
   const { colors } = useTheme();
   const { width } = Dimensions.get('window');
-  const height = 250; // Altura de la ola
+  const height = 250;
 
   return (
     <View style={{ position: 'absolute', top: 0, left: 0, right: 0, height }}>
@@ -60,6 +58,7 @@ export default function Login() {
     try {
       await login(email.trim().toLowerCase(), password);
     } catch (e: any) {
+      // AQUÍ SE ESTABLECE EL MENSAJE DE ERROR
       setErr(e?.message ?? "Email o contraseña incorrectos.");
     } finally {
       setSubmitting(false);
@@ -83,11 +82,11 @@ export default function Login() {
               style={styles.logo} 
             />
             <Text style={[styles.title, { color: colors.text }]}>¡Bienvenido!</Text>
-            <Text style={[styles.subtitle, { color: colors.gray500 }]}>Ingresa tus credenciales para continuar</Text>
+            <Text style={[styles.subtitle, { color: colors.gray600 }]}>Ingresa tus credenciales para continuar</Text>
             
             <View style={styles.form}>
               <View style={[styles.inputContainer, { borderColor: colors.border }]}>
-                  <Ionicons name="mail-outline" size={20} color={colors.secondary} style={styles.inputIcon} />
+                  <Ionicons name="mail-outline" size={20} color={colors.textSecondary} style={styles.inputIcon} />
                   <TextInput
                       placeholder="nombre@correo.com"
                       style={[styles.input, { color: colors.text }]}
@@ -100,7 +99,7 @@ export default function Login() {
               </View>
 
               <View style={[styles.inputContainer, { borderColor: colors.border }]}>
-                  <Ionicons name="lock-closed-outline" size={20} color={colors.secondary} style={styles.inputIcon} />
+                  <Ionicons name="lock-closed-outline" size={20} color={colors.textSecondary} style={styles.inputIcon} />
                   <PasswordInput 
                       placeholder="Contraseña"
                       value={password}
@@ -111,13 +110,15 @@ export default function Login() {
               </View>
 
               <Pressable onPress={() => router.push("/forgot")}>
-                <Text style={[styles.forgotPasswordText, { color: colors.tertiary }]}>¿Olvidaste tu contraseña?</Text>
+                <Text style={[styles.forgotPasswordText, { color: colors.primary }]}>¿Olvidaste tu contraseña?</Text>
               </Pressable>
 
+              {/* --- AQUÍ SE MUESTRA EL MENSAJE DE ERROR --- */}
               {err && (
-                <View style={[styles.errorContainer, { backgroundColor: colors.error }]}>
-                  <Text style={[styles.errorText, { color: colors.white }]}>{err}</Text>
-                </View>
+                <Animated.View entering={FadeInUp} style={[styles.errorContainer, { backgroundColor: colors.error_bg }]}>
+                  <Ionicons name="alert-circle-outline" size={20} color={colors.error} />
+                  <Text style={[styles.errorText, { color: colors.error }]}>{err}</Text>
+                </Animated.View>
               )}
 
               <Button
@@ -130,11 +131,13 @@ export default function Login() {
             </View>
 
             <View style={styles.footer}>
-              <Text style={[styles.footerText, { color: colors.gray500 }]}>
+              <Text style={[styles.footerText, { color: colors.textSecondary }]}>
                 ¿No tienes una cuenta?{" "}
-                <Text onPress={() => router.push("/register")} style={[styles.linkText, { color: colors.primary }]}>
-                  Regístrate
-                </Text>
+                <Link href="/register" asChild>
+                  <Text style={[styles.linkText, { color: colors.primary }]}>
+                    Regístrate
+                  </Text>
+                </Link>
               </Text>
             </View>
           </Animated.View>
@@ -171,7 +174,7 @@ const styles = StyleSheet.create({
     marginBottom: 16,
   },
   title: {
-    fontSize: 34,
+    fontSize: 28,
     fontWeight: 'bold',
     textAlign: 'center',
   },
@@ -198,22 +201,25 @@ const styles = StyleSheet.create({
   input: {
     height: 50,
     fontSize: 16,
-    flex: 1, // Permite que el input crezca
+    flex: 1,
   },
   forgotPasswordText: {
     textAlign: 'right',
     fontWeight: '600',
     fontSize: 14,
-    marginBottom: 24,
+    marginBottom: 16, // Reducido para acercar el error si aparece
   },
   errorContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
     padding: 12,
     borderRadius: 8,
     marginBottom: 16,
+    gap: 8,
   },
   errorText: {
     fontWeight: '600',
-    textAlign: 'center',
+    flex: 1, // Para que el texto se ajuste
   },
   submitButton: {
     height: 50,
