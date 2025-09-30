@@ -1,6 +1,6 @@
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import { useFocusEffect, useRouter } from "expo-router";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Alert,
   Dimensions,
@@ -13,7 +13,7 @@ import {
   TextInput,
   View,
 } from "react-native";
-import { GestureHandlerRootView } from "react-native-gesture-handler"; // No necesitas Swipeable aquí
+import { GestureHandlerRootView } from "react-native-gesture-handler";
 import Animated, { FadeInUp } from "react-native-reanimated";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import Svg, { Defs, Path, Stop, LinearGradient as SvgGradient } from "react-native-svg";
@@ -23,14 +23,13 @@ import { useTheme } from "../../providers/theme";
 
 type Item = { id: string; product: string; qty: string };
 
-// --- Componente para el fondo de ola ---
 const WaveBackground = () => {
   const { colors } = useTheme();
   const { width } = Dimensions.get('window');
-  const height = 180; // Altura ajustada para coincidir con el ejemplo de búsqueda
+  const height = 250;
 
   return (
-    <View style={{ position: 'absolute', top: 0, left: 0, right: 0, height }}>
+    <View style={styles.waveContainer}>
       <Svg height="100%" width="100%" viewBox={`0 0 ${width} ${height}`}>
         <Defs>
           <SvgGradient id="grad" x1="0%" y1="0%" x2="0%" y2="100%">
@@ -38,98 +37,70 @@ const WaveBackground = () => {
             <Stop offset="100%" stopColor={colors.secondary} stopOpacity="1" />
           </SvgGradient>
         </Defs>
-        <Path fill="url(#grad)" d={`M0,0 L0,${height * 0.6} Q${width / 2},${height} ${width},${height * 0.6} L${width},0 Z`} />
+        <Path fill="url(#grad)" d={`M0,0 L0,${height * 0.7} Q${width / 2},${height} ${width},${height * 0.7} L${width},0 Z`} />
       </Svg>
     </View>
   );
 };
 
-// --- Componente para cada Ítem de la Lista (con modo de edición) ---
-const ListItem = ({ item, onUpdate, onDelete, isEditing, onSetEditingId }) => {
+const ListItem = React.memo(({ item, onUpdate, onDelete, isEditing, onSetEditingId }: any) => {
     const { colors, spacing } = useTheme();
-    
-    // Estado local para manejar los inputs de edición
     const [editedProduct, setEditedProduct] = useState(item.product);
     const [editedQty, setEditedQty] = useState(parseInt(item.qty, 10));
 
-    // Sincroniza el estado local cuando se empieza a editar un ítem diferente
     useEffect(() => {
         if (isEditing) {
             setEditedProduct(item.product);
             setEditedQty(parseInt(item.qty, 10));
         }
-    }, [isEditing, item.product, item.qty]); // Añadidos item.product y item.qty como dependencias
+    }, [isEditing, item.product, item.qty]);
 
     const handleSave = () => {
         onUpdate(item.id, editedProduct.trim(), String(editedQty));
-        onSetEditingId(null); // Sale del modo edición
+        onSetEditingId(null);
     };
+    const handleCancel = () => { onSetEditingId(null); };
+    const changeQty = (amount: number) => { setEditedQty(prev => Math.max(1, prev + amount)); }
 
-    const handleCancel = () => {
-        onSetEditingId(null); // Sale del modo edición
-    };
-    
-    const changeQty = (amount: number) => {
-        setEditedQty(prev => Math.max(1, prev + amount));
-    }
-
-    // --- VISTA DE EDICIÓN ---
     if (isEditing) {
         return (
             <Animated.View entering={FadeInUp.duration(300)} style={[styles.itemCardEditing, { backgroundColor: colors.white, borderColor: colors.primary }]}>
                 <TextInput
-                    value={editedProduct}
-                    onChangeText={setEditedProduct}
-                    style={[styles.itemProductInput, { color: colors.text }]}
-                    autoFocus
+                    value={editedProduct} onChangeText={setEditedProduct}
+                    style={[styles.itemProductInput, { color: colors.text }]} autoFocus
                 />
                 <View style={styles.quantityEditor}>
-                    <Pressable onPress={() => changeQty(-1)} style={[styles.stepperButton, { backgroundColor: colors.background }]}>
-                        <Ionicons name="remove" size={20} color={colors.tertiary} />
-                    </Pressable>
+                    <Pressable onPress={() => changeQty(-1)} style={[styles.stepperButton, { backgroundColor: colors.background }]}><Ionicons name="remove" size={20} color={colors.tertiary} /></Pressable>
                     <Text style={[styles.itemQtyTextEditing, { color: colors.text }]}>{editedQty}</Text>
-                    <Pressable onPress={() => changeQty(1)} style={[styles.stepperButton, { backgroundColor: colors.background }]}>
-                        <Ionicons name="add" size={20} color={colors.tertiary} />
-                    </Pressable>
+                    <Pressable onPress={() => changeQty(1)} style={[styles.stepperButton, { backgroundColor: colors.background }]}><Ionicons name="add" size={20} color={colors.tertiary} /></Pressable>
                 </View>
-                <Pressable onPress={handleSave} style={styles.editActionButton}>
-                    <Ionicons name="checkmark-circle" size={28} color={colors.success} />
-                </Pressable>
-                <Pressable onPress={handleCancel} style={styles.editActionButton}>
-                    <Ionicons name="close-circle" size={28} color={colors.gray400} />
-                </Pressable>
+                <Pressable onPress={handleSave} style={styles.editActionButton}><Ionicons name="checkmark-circle" size={28} color={colors.success} /></Pressable>
+                <Pressable onPress={handleCancel} style={styles.editActionButton}><Ionicons name="close-circle" size={28} color={colors.gray400} /></Pressable>
             </Animated.View>
         );
     }
 
-    // --- VISTA NORMAL ---
     return (
+        // --- ANIMACIÓN AÑADIDA AQUÍ ---
         <Animated.View entering={FadeInUp.duration(300)}>
             <Pressable 
-                onPress={() => onSetEditingId(item.id)} // Presionar la tarjeta para editar
+                onPress={() => onSetEditingId(item.id)}
                 style={[styles.itemCard, { backgroundColor: colors.white, borderColor: colors.border }]}
             >
                 <Ionicons name="ellipse-outline" size={24} color={colors.primary} style={{ marginRight: spacing.sm }}/>
                 <Text style={[styles.itemProduct, { color: colors.text }]}>{item.product}</Text>
-                <View style={[styles.itemQtyBadge, { backgroundColor: colors.background }]}>
-                    <Text style={[styles.itemQtyText, { color: colors.tertiary }]}>x{item.qty}</Text>
-                </View>
-                {/* Íconos de acción visibles */}
-                <Pressable onPress={() => onSetEditingId(item.id)} style={styles.actionIcon}>
-                    <Ionicons name="create-outline" size={22} color={colors.tertiary} />
-                </Pressable>
-                <Pressable onPress={onDelete} style={styles.actionIcon}>
-                    <Ionicons name="trash-outline" size={22} color={colors.error} />
-                </Pressable>
+                <View style={[styles.itemQtyBadge, { backgroundColor: colors.background }]}><Text style={[styles.itemQtyText, { color: colors.tertiary }]}>x{item.qty}</Text></View>
+                <Pressable onPress={() => onSetEditingId(item.id)} style={styles.actionIcon}><Ionicons name="create-outline" size={22} color={colors.tertiary} /></Pressable>
+                <Pressable onPress={onDelete} style={styles.actionIcon}><Ionicons name="trash-outline" size={22} color={colors.error} /></Pressable>
             </Pressable>
         </Animated.View>
     );
-};
+});
 
 export default function NewListScreen() {
   const { colors, spacing } = useTheme();
   const router = useRouter();
-  const insets = useSafeAreaInsets(); // Importado para ajustar el Safe Area
+  const insets = useSafeAreaInsets();
 
   const [title, setTitle] = useState("Nueva Lista");
   const [items, setItems] = useState<Item[]>([]);
@@ -138,11 +109,9 @@ export default function NewListScreen() {
   const newItemInputRef = useRef<TextInput>(null);
 
   const canSave = items.length > 0;
-  const dateText = useMemo(() => new Date().toLocaleDateString('es-ES', { day: 'numeric', month: 'long', year: 'numeric' }), []);
+  const dateText = useMemo(() => new Date().toLocaleDateString('es-ES', { day: 'numeric', month: 'long' }), []);
 
-  const resetForm = useCallback(() => {
-    setTitle("Nueva Lista"); setItems([]); setNewItem(""); setEditingItemId(null);
-  }, []);
+  const resetForm = useCallback(() => { setTitle("Nueva Lista"); setItems([]); setNewItem(""); setEditingItemId(null); }, []);
   useFocusEffect(resetForm);
 
   const handleAddItem = () => {
@@ -153,15 +122,10 @@ export default function NewListScreen() {
     setNewItem("");
   };
 
-  const removeItem = (id: string) => {
-    setItems((prev) => prev.filter((item) => item.id !== id));
-    setEditingItemId(null); // Asegura que se sale del modo edición si se elimina el ítem editado
-  };
+  const removeItem = (id: string) => { setItems((prev) => prev.filter((item) => item.id !== id)); setEditingItemId(null); };
   
   const updateItem = (id: string, newProduct: string, newQty: string) => {
-      setItems(prevItems => prevItems.map(item => 
-          item.id === id ? { ...item, product: newProduct, qty: newQty } : item
-      ));
+      setItems(prevItems => prevItems.map(item => item.id === id ? { ...item, product: newProduct, qty: newQty } : item));
   };
 
   const onSave = async () => {
@@ -170,7 +134,7 @@ export default function NewListScreen() {
       const list = await createShoppingList({ nombre: title.trim() });
       await Promise.all(items.map(it => addItem(list.id, { nombre: it.product, cantidad: it.qty })));
       Alert.alert("Éxito", `La lista "${title.trim()}" se guardó.`, [
-        { text: "OK", onPress: () => router.back() },
+        { text: "OK", onPress: () => router.push('/purchases') },
       ]);
     } catch (e: any) {
       Alert.alert("Error", e?.message || "No se pudo guardar la lista.");
@@ -183,53 +147,47 @@ export default function NewListScreen() {
         <WaveBackground />
         <SafeAreaView style={styles.safeArea} edges={["top", "bottom"]}>
           <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === "ios" ? "padding" : "height"}>
-            
-            {/* --- ENCABEZADO FIJO CON LA TARJETA --- */}
-            <Animated.View entering={FadeInUp.duration(600)} style={{ paddingHorizontal: spacing.md }}>
-                <View style={{ paddingTop: insets.top + 20 }}/> {/* Ajuste para el SafeArea y el espacio extra */}
-                <View style={[styles.contentCard, { backgroundColor: colors.white }]}>
-                    <View style={styles.header}>
-                        <View style={styles.titleContainer}>
-                            <Ionicons name="document-text-outline" size={24} color={colors.primary} />
-                            <TextInput value={title} onChangeText={setTitle} style={[styles.listTitleInput, { color: colors.primary }]} />
-                        </View>
-                        <Pressable
-                            onPress={onSave}
-                            disabled={!canSave}
-                            style={[styles.saveButton, { backgroundColor: colors.success, opacity: canSave ? 1 : 0.5 }]}
-                        >
-                            <MaterialCommunityIcons name="content-save-outline" size={22} color={colors.white} />
-                        </Pressable>
-                    </View>
-                    <Text style={[styles.dateTextInCard, { color: colors.tertiary }]}>{dateText}</Text>
-                    <View style={styles.inputBar}>
-                        <TextInput
-                            ref={newItemInputRef}
-                            style={[styles.textInput, { backgroundColor: colors.background, color: colors.text, borderColor: colors.border }]}
-                            placeholder="Agregar un producto..."
-                            placeholderTextColor={colors.gray400}
-                            value={newItem}
-                            onChangeText={setNewItem}
-                            onSubmitEditing={handleAddItem}
-                            blurOnSubmit={false}
-                        />
-                        <Pressable 
-                            onPress={handleAddItem} 
-                            disabled={!newItem.trim()}
-                            style={[styles.submitButton, { backgroundColor: newItem.trim() ? colors.primary : colors.gray100 }]}
-                        >
-                            <Ionicons name="add" size={28} color={colors.white} />
-                        </Pressable>
-                    </View>
+            <Animated.View entering={FadeInUp.duration(600)} style={[styles.headerContainer, {paddingTop: insets.top}]}>
+              <View style={[styles.contentCard, { backgroundColor: colors.white }]}>
+                <View style={styles.header}>
+                  <View style={styles.titleContainer}>
+                    <Ionicons name="document-text-outline" size={24} color={colors.primary} />
+                    <TextInput value={title} onChangeText={setTitle} style={[styles.listTitleInput, { color: colors.primary }]} />
+                  </View>
+                  <Pressable
+                    onPress={onSave} disabled={!canSave}
+                    style={[styles.saveButton, { backgroundColor: colors.success, opacity: canSave ? 1 : 0.5 }]}
+                  >
+                    <MaterialCommunityIcons name="content-save-outline" size={22} color={colors.white} />
+                  </Pressable>
                 </View>
+                <Text style={[styles.dateTextInCard, { color: colors.textSecondary }]}>{dateText}</Text>
+                <View style={styles.inputBar}>
+                  <TextInput
+                    ref={newItemInputRef}
+                    style={[styles.textInput, { backgroundColor: colors.background, color: colors.text, borderColor: colors.border }]}
+                    placeholder="Agregar un producto..."
+                    placeholderTextColor={colors.gray400}
+                    value={newItem}
+                    onChangeText={setNewItem}
+                    onSubmitEditing={handleAddItem}
+                    blurOnSubmit={false}
+                  />
+                  <Pressable 
+                    onPress={handleAddItem} disabled={!newItem.trim()}
+                    style={[styles.submitButton, { backgroundColor: newItem.trim() ? colors.primary : colors.gray100 }]}
+                  >
+                    <Ionicons name="add" size={28} color={colors.white} />
+                  </Pressable>
+                </View>
+              </View>
             </Animated.View>
             
-            {/* --- LISTA DESPLAZABLE --- */}
             <FlatList
-              style={{ flex: 1, marginTop: spacing.md }}
+              style={{ flex: 1 }}
               data={items}
               keyExtractor={(item) => item.id}
-              extraData={editingItemId} // Importante para re-renderizar cuando cambia el ítem en edición
+              extraData={editingItemId}
               contentContainerStyle={styles.listContentContainer}
               renderItem={({ item }) => (
                 <ListItem 
@@ -243,7 +201,7 @@ export default function NewListScreen() {
               ListEmptyComponent={
                 <View style={styles.emptyContainer}>
                   <Ionicons name="file-tray-stacked-outline" size={60} color={colors.gray200} />
-                  <Text style={[styles.emptyText, { color: colors.gray400 }]}>Tu lista está vacía</Text>
+                  <Text style={[styles.emptyText, { color: colors.textSecondary }]}>Tu lista está vacía</Text>
                   <Text style={[styles.emptySubText, { color: colors.gray400 }]}>Agrega productos usando el formulario superior.</Text>
                 </View>
               }
@@ -259,30 +217,32 @@ export default function NewListScreen() {
 const styles = StyleSheet.create({
   root: { flex: 1 },
   safeArea: { flex: 1 },
-  waveContainer: { position: 'absolute', top: 0, left: 0, right: 0 },
-  
-  // Contenedor principal para la tarjeta (similar a search.tsx)
+  waveContainer: { 
+    position: 'absolute', top: 0, left: 0, right: 0, 
+    height: 250, zIndex: 0,
+  },
   headerContainer: {
-    // paddingTop se maneja directamente en el componente para usar `insets.top`
     paddingHorizontal: 16,
-    zIndex: 10,
+    zIndex: 1, 
+    marginTop: 10,
   },
   contentCard: {
     borderRadius: 20,
-    padding: 20,
+    paddingHorizontal: 20,
+    paddingBottom: 20,
+    paddingTop: 20,
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.1,
     shadowRadius: 20,
     elevation: 10,
   },
-  
   header: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
   },
-  listTitleInput: { // Renombrado de titleInput a listTitleInput para evitar conflictos
+  listTitleInput: {
     fontSize: 24,
     fontWeight: 'bold',
     flex: 1,
@@ -301,7 +261,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     marginLeft: 16,
   },
-  dateTextInCard: { // Renombrado de dateText para evitar conflicto y especificar que es el de la tarjeta
+  dateTextInCard: {
     textAlign: 'center',
     fontSize: 14,
     fontWeight: '500',
@@ -328,16 +288,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  
-  // Contenedor de la lista
   listContentContainer: {
-    paddingBottom: 48,
+    padding: 16,
   },
   emptyContainer: { paddingTop: 48, alignItems: 'center', opacity: 0.8 },
   emptyText: { fontSize: 18, fontWeight: '600', marginTop: 16 },
   emptySubText: { fontSize: 14, marginTop: 8, textAlign: 'center' },
-  
-  // Estilos de los ítems en modo normal
   itemCard: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -346,13 +302,8 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     borderWidth: 1,
     marginBottom: 12,
-    shadowColor: "#000000",
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
-    shadowRadius: 4,
-    elevation: 2,
   },
-  itemProduct: { flex: 1, fontSize: 16 },
+  itemProduct: { flex: 1, fontSize: 16, fontWeight: '500' },
   itemQtyBadge: {
     paddingHorizontal: 10,
     paddingVertical: 4,
@@ -361,8 +312,6 @@ const styles = StyleSheet.create({
   },
   itemQtyText: { fontWeight: '600', fontSize: 14 },
   actionIcon: { padding: 4, marginLeft: 8 },
-  
-  // Estilos de los ítems en modo edición
   itemCardEditing: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -370,11 +319,6 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     borderWidth: 2,
     marginBottom: 12,
-    shadowColor: "#000000",
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
-    shadowRadius: 4,
-    elevation: 2,
   },
   itemProductInput: { flex: 1, fontSize: 16, fontWeight: '500', paddingVertical: 8 },
   quantityEditor: {

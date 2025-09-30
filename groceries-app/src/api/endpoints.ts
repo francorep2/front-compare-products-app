@@ -100,7 +100,7 @@ export const getListDetail = (listId: number) =>
   request<ShoppingListDetail>(`/shopping/lists/${listId}`);
 
 export const renameList = (listId: number, payload: ShoppingListRenameIn) =>
-  request<ShoppingListOut>(`/shopping/lists/${listId}`, { method: "PATCH", body: JSON.stringify(payload) });
+  request<ShoppingListOut>(`/shopping/${listId}`, { method: "PUT", body: JSON.stringify(payload) });
 
 export const deleteList = (listId: number) =>
   request<void>(`/shopping/lists/${listId}`, { method: "DELETE" });

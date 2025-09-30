@@ -10,6 +10,52 @@ import type { ShoppingListOut } from "../../../api/types";
 import { Button } from "../../../components/ui/Button";
 import { useTheme } from "../../../providers/theme";
 
+// --- HELPERS DE FECHA CORREGIDOS ---
+function ymdFromAny(input: unknown): string | null {
+  if (input == null) return null;
+  const s = String(input).trim();
+
+  // Caso 1: ISO yyyy-mm-dd
+  const mIso = s.match(/\b(\d{4})-(\d{2})-(\d{2})\b/);
+  if (mIso) return `${mIso[1]}-${mIso[2]}-${mIso[3]}`;
+
+  // --- CORRECCIÓN AQUÍ: AÑADIMOS EL CASO dd-mm-yyyy ---
+  const mLatamDash = s.match(/\b(\d{2})-(\d{2})-(\d{4})\b/);
+  if (mLatamDash) return `${mLatamDash[3]}-${mLatamDash[2]}-${mLatamDash[1]}`;
+
+  // Caso 2: Latam dd/mm/yyyy
+  const mLatamSlash = s.match(/\b(\d{2})\/(\d{2})\/(\d{4})\b/);
+  if (mLatamSlash) return `${mLatamSlash[3]}-${mLatamSlash[2]}-${mLatamSlash[1]}`;
+  
+  // Caso 3: epoch
+  if (/^\d{10,13}$/.test(s)) {
+    const ms = s.length === 13 ? Number(s) : Number(s) * 1000;
+    const d = new Date(ms);
+    const y = d.getUTCFullYear();
+    const m = String(d.getUTCMonth() + 1).padStart(2, "0");
+    const dd = String(d.getUTCDate()).padStart(2, "0");
+    return `${y}-${m}-${dd}`;
+  }
+
+  return null;
+}
+
+function ymdToInt(ymd: string | null): number {
+  if (!ymd) return 0;
+  return Number(ymd.replace(/-/g, ""));
+}
+
+function formatEsArYMD(ymd: string | null): string {
+  if (!ymd) return "";
+  const m = ymd.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!m) return ymd;
+  const y = Number(m[1]);
+  const mo = Number(m[2]);
+  const d = Number(m[3]);
+  const meses = ["enero","febrero","marzo","abril","mayo","junio","julio","agosto","septiembre","octubre","noviembre","diciembre"];
+  return `${d} de ${meses[mo - 1]} de ${y}`;
+}
+
 export default function RecentListsScreen() {
   const { colors, spacing } = useTheme();
   const router = useRouter();
@@ -23,7 +69,11 @@ export default function RecentListsScreen() {
     try {
       setError(null);
       const lists = await getMyLists();
-      const ordered = [...lists].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+      const ordered = [...lists].sort((a, b) => {
+        const ya = ymdFromAny(a.created_at);
+        const yb = ymdFromAny(b.created_at);
+        return ymdToInt(yb) - ymdToInt(ya);
+      });
       setData(ordered);
     } catch (e: any) {
       setError(e?.message || "No se pudieron cargar tus listas.");
@@ -45,42 +95,47 @@ export default function RecentListsScreen() {
     load();
   };
 
-  const renderItem = ({ item, index }: { item: ShoppingListOut, index: number }) => (
-    <Animated.View entering={FadeInUp.duration(500).delay(index * 50)}>
-      <Pressable
-        onPress={() => router.push({ pathname: "/list/[id]", params: { id: String(item.id) } })}
-        style={[styles.card, { backgroundColor: colors.white, borderColor: colors.border }]}
-      >
-        <View style={[styles.cardIcon, { backgroundColor: colors.primary_bg }]}>
+  const renderItem = ({ item, index }: { item: ShoppingListOut, index: number }) => {
+    const ymd = ymdFromAny(item.created_at);
+    const friendly = formatEsArYMD(ymd);
+
+    return (
+      <Animated.View entering={FadeInUp.duration(500).delay(index * 50)}>
+        <Pressable
+          onPress={() => router.push({ pathname: "/list/[id]", params: { id: String(item.id) } })}
+          style={[styles.card, { backgroundColor: colors.white, borderColor: colors.border }]}
+        >
+          <View style={[styles.cardIcon, { backgroundColor: colors.white }]}>
             <Ionicons name="list-outline" size={24} color={colors.primary} />
-        </View>
-        <View style={styles.cardTextContainer}>
+          </View>
+          <View style={styles.cardTextContainer}>
             <Text style={[styles.cardTitle, { color: colors.text }]}>{item.nombre}</Text>
             <Text style={[styles.cardSubtitle, { color: colors.tertiary }]}>
-                Creada el {new Date(item.created_at).toLocaleDateString('es-ES')}
+              {friendly ? `Creada el ${friendly}` : "Sin fecha"}
             </Text>
-        </View>
-        <Ionicons name="chevron-forward" size={22} color={colors.gray200} />
-      </Pressable>
-    </Animated.View>
-  );
+          </View>
+          <Ionicons name="chevron-forward" size={22} color={colors.gray200} />
+        </Pressable>
+      </Animated.View>
+    );
+  };
 
   const renderEmptyState = () => {
     if (loading) return <ActivityIndicator size="large" color={colors.primary} style={{ marginTop: 40 }}/>;
     
     if (error) return (
       <View style={styles.emptyContainer}>
-          <Ionicons name="cloud-offline-outline" size={60} color={colors.error} />
-          <Text style={[styles.emptyText, { color: colors.error }]}>Ocurrió un error</Text>
-          <Text style={[styles.emptySubText, { color: colors.tertiary }]}>{error}</Text>
-          <Button title="Reintentar" onPress={load} style={{ marginTop: spacing.md, backgroundColor: colors.primary }} />
+        <Ionicons name="cloud-offline-outline" size={60} color={colors.error} />
+        <Text style={[styles.emptyText, { color: colors.error }]}>Ocurrió un error</Text>
+        <Text style={[styles.emptySubText, { color: colors.error }]}>{error}</Text>
+        <Button title="Reintentar" onPress={load} style={{ marginTop: spacing.md, backgroundColor: colors.primary }} />
       </View>
     );
 
     return (
       <View style={styles.emptyContainer}>
         <Ionicons name="file-tray-outline" size={60} color={colors.gray200} />
-        <Text style={[styles.emptyText, { color: colors.gray400 }]}>Aún no tienes listas guardadas</Text>
+        <Text style={[styles.emptyText, { color: colors.gray500 }]}>Aún no tienes listas guardadas</Text>
         <Button title="Crear tu primera lista" onPress={() => router.replace("/new-list")} style={{ marginTop: spacing.md, backgroundColor: colors.primary }}/>
       </View>
     );
@@ -108,21 +163,20 @@ export default function RecentListsScreen() {
   );
 }
 
-
 const styles = StyleSheet.create({
   safeArea: { 
     flex: 1,
   },
   header: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      justifyContent: 'space-between',
-      paddingHorizontal: 16,
-      paddingVertical: 12,
-      borderBottomWidth: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderBottomWidth: 1,
   },
   backButton: {
-      padding: 8,
+    padding: 8,
   },
   title: {
     fontSize: 20,
