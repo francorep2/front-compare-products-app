@@ -1,0 +1,49 @@
+import 'dotenv/config';
+
+export default {
+  expo: {
+    name: "groceries-app",
+    slug: "groceries-app",
+    scheme: "groceries",
+    splash: {
+      image: "./assets/icono.png",
+      resizeMode: "contain",
+      backgroundColor: "#FD1648"
+    },
+    extra: {
+      EXPO_PUBLIC_API_URL: process.env.EXPO_PUBLIC_API_URL,
+      router: {},
+      eas: {
+        projectId: "5d77ce7e-2783-4640-b0ad-916d31957da5"
+      }
+    },
+    plugins: [
+      "expo-router",
+      "expo-secure-store",
+      "expo-camera"
+    ],
+    router: {
+      root: "src/app"
+    },
+    userInterfaceStyle: "light",
+    android: {
+      softwareKeyboardLayoutMode: "pan",
+      adaptiveIcon: {
+        foregroundImage: "./assets/icono.png",
+        backgroundColor: "#FD1648"
+      },
+      edgeToEdge: true,
+      permissions: [
+        "android.permission.CAMERA"
+      ],
+      package: "com.francorep2.groceriesapp",
+      versionCode: 1
+    },
+    ios: {
+      supportsTablet: true
+    },
+    web: {
+      favicon: "./assets/icono.png"
+    }
+  }
+};

@@ -1,13 +1,9 @@
 // src/api/clients.ts
-import Constants from "expo-constants";
 import * as SecureStore from "expo-secure-store";
 
 // 1) Resolver BASE_URL desde varios lugares y normalizar
-const cfg = (Constants?.expoConfig as any) ?? {};
-const fromExtra = cfg?.extra?.EXPO_PUBLIC_API_URL;
-const fromEnv = process.env.EXPO_PUBLIC_API_URL;
-const RAW_BASE = (fromEnv || fromExtra || "").trim();
-export const BASE_URL = RAW_BASE.replace(/\/+$/, ""); // sin slash final
+
+export const BASE_URL = process.env.EXPO_PUBLIC_API_URL
 
 if (!BASE_URL) {
   console.warn("⚠️ BASE_URL vacío. Configurá EXPO_PUBLIC_API_URL en app.json o .env");

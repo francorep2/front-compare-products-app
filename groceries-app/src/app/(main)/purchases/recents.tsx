@@ -96,40 +96,33 @@ export default function RecentListsScreen() {
     load();
   };
 
-<<<<<<< HEAD
-  const renderItem = ({ item, index }: { item: ShoppingListOut, index: number }) => (
-    <Animated.View entering={FadeInUp.duration(500).delay(index * 50)}>
-      <Pressable
-        onPress={() => router.push({ pathname: "/list/[id]", params: { id: String(item.id) } })}
-        style={[styles.card, { backgroundColor: colors.white, borderColor: colors.border }]}
-      >
-        <View style={[styles.cardIcon, { backgroundColor: colors.white }]}>
-=======
-  const onDelete = (id: number, name: string) => {
-    Alert.alert("Eliminar lista", `¿Quieres borrar "${name}"?`, [
-      { text: "Cancelar", style: "cancel" },
-      {
-        text: "Eliminar",
-        style: "destructive",
-        onPress: async () => {
-          setDeletingId(id);
-          try {
-            await deleteList(id);
-            setData(prev => prev.filter(l => l.id !== id));
-          } catch (e: any) {
-            Alert.alert("Error", e?.message || "No se pudo eliminar la lista.");
-          } finally {
-            setDeletingId(null);
-          }
+  const onDelete = (id: number, nombre: string) => {
+    Alert.alert(
+      "Eliminar lista",
+      `¿Seguro que deseas eliminar la lista "${nombre}"?`,
+      [
+        { text: "Cancelar", style: "cancel" },
+        {
+          text: "Eliminar",
+          style: "destructive",
+          onPress: async () => {
+            setDeletingId(id);
+            try {
+              await deleteList(id);
+              setData((prev) => prev.filter((l) => l.id !== id));
+            } catch (e: any) {
+              Alert.alert("Error", e?.message || "No se pudo eliminar la lista.");
+            } finally {
+              setDeletingId(null);
+            }
+          },
         },
-      },
-    ]);
+      ]
+    );
   };
 
   const renderItem = ({ item, index }: { item: ShoppingListOut, index: number }) => {
-    const ymd = ymdFromAny(item.created_at);
-    const friendly = formatEsArYMD(ymd);
-
+    const friendly = formatEsArYMD(ymdFromAny(item.created_at));
     return (
       <Animated.View entering={FadeInUp.duration(500).delay(index * 50)}>
         <Pressable
@@ -137,28 +130,27 @@ export default function RecentListsScreen() {
           style={[styles.card, { backgroundColor: colors.white, borderColor: colors.border }]}
         >
           <View style={[styles.cardIcon, { backgroundColor: colors.white }]}>
->>>>>>> 3a26e3ba5824b43aaa1399d8e8743930eaba56fb
-            <Ionicons name="list-outline" size={24} color={colors.primary} />
-          </View>
-          <View style={styles.cardTextContainer}>
-            <Text style={[styles.cardTitle, { color: colors.text }]}>{item.nombre}</Text>
-            <Text style={[styles.cardSubtitle, { color: colors.tertiary }]}>
-              {friendly ? `Creada el ${friendly}` : "Sin fecha"}
-            </Text>
-          </View>
-          <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-            {deletingId === item.id ? (
-              <ActivityIndicator size="small" color={colors.error} style={{ marginRight: 12 }} />
-            ) : (
-              <Pressable onPress={() => onDelete(item.id, item.nombre)} hitSlop={8} style={{ padding: 6, marginRight: 8 }}>
-                <Ionicons name="trash-outline" size={20} color={colors.error} />
-              </Pressable>
-            )}
-            <Ionicons name="chevron-forward" size={22} color={colors.gray200} />
-          </View>
-        </Pressable>
-      </Animated.View>
-    );
+              <Ionicons name="list-outline" size={24} color={colors.primary} />
+            </View>
+            <View style={styles.cardTextContainer}>
+              <Text style={[styles.cardTitle, { color: colors.text }]}>{item.nombre}</Text>
+              <Text style={[styles.cardSubtitle, { color: colors.tertiary }]}>
+                {friendly ? `Creada el ${friendly}` : "Sin fecha"}
+              </Text>
+            </View>
+            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+              {deletingId === item.id ? (
+                <ActivityIndicator size="small" color={colors.error} style={{ marginRight: 12 }} />
+              ) : (
+                <Pressable onPress={() => onDelete(item.id, item.nombre)} hitSlop={8} style={{ padding: 6, marginRight: 8 }}>
+                  <Ionicons name="trash-outline" size={20} color={colors.error} />
+                </Pressable>
+              )}
+              <Ionicons name="chevron-forward" size={22} color={colors.gray200} />
+            </View>
+          </Pressable>
+        </Animated.View>
+      );
   };
 
   const renderEmptyState = () => {
