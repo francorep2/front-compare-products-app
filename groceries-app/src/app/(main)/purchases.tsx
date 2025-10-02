@@ -40,6 +40,54 @@ export default function PurchasesMenu() {
   const [loading, setLoading] = React.useState(true);
   const [deletingId, setDeletingId] = React.useState<number | null>(null);
 
+
+  // --- HELPERS DE FECHA CORREGIDOS ---
+function ymdFromAny(input: unknown): string | null {
+  if (input == null) return null;
+  const s = String(input).trim();
+
+  // Caso 1: ISO yyyy-mm-dd
+  const mIso = s.match(/\b(\d{4})-(\d{2})-(\d{2})\b/);
+  if (mIso) return `${mIso[1]}-${mIso[2]}-${mIso[3]}`;
+
+  // --- CORRECCIÓN AQUÍ: AÑADIMOS EL CASO dd-mm-yyyy ---
+  const mLatamDash = s.match(/\b(\d{2})-(\d{2})-(\d{4})\b/);
+  if (mLatamDash) return `${mLatamDash[3]}-${mLatamDash[2]}-${mLatamDash[1]}`;
+
+  // Caso 2: Latam dd/mm/yyyy
+  const mLatamSlash = s.match(/\b(\d{2})\/(\d{2})\/(\d{4})\b/);
+  if (mLatamSlash) return `${mLatamSlash[3]}-${mLatamSlash[2]}-${mLatamSlash[1]}`;
+  
+  // Caso 3: epoch
+  if (/^\d{10,13}$/.test(s)) {
+    const ms = s.length === 13 ? Number(s) : Number(s) * 1000;
+    const d = new Date(ms);
+    const y = d.getUTCFullYear();
+    const m = String(d.getUTCMonth() + 1).padStart(2, "0");
+    const dd = String(d.getUTCDate()).padStart(2, "0");
+    return `${y}-${m}-${dd}`;
+  }
+
+  return null;
+}
+
+function ymdToInt(ymd: string | null): number {
+  if (!ymd) return 0;
+  return Number(ymd.replace(/-/g, ""));
+}
+
+function formatEsArYMD(ymd: string | null): string {
+  if (!ymd) return "";
+  const m = ymd.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!m) return ymd;
+  const y = Number(m[1]);
+  const mo = Number(m[2]);
+  const d = Number(m[3]);
+  const meses = ["enero","febrero","marzo","abril","mayo","junio","julio","agosto","septiembre","octubre","noviembre","diciembre"];
+  return `${d} de ${meses[mo - 1]} de ${y}`;
+}
+
+
   const load = React.useCallback(async () => {
     try {
       const data = await getMyLists();
@@ -80,31 +128,49 @@ export default function PurchasesMenu() {
     ]);
   };
 
-  const ListCard = ({ item }: { item: ShoppingListOut }) => (
+
+  const ListCard = ({ 
+  item, 
+  onDelete, 
+  deletingId 
+}: { 
+  item: ShoppingListOut, 
+  onDelete: (id: number, name: string) => void,
+  deletingId: number | null 
+}) => {
+  const { colors } = useTheme();
+  const router = useRouter();
+
+  // La lógica ahora está dentro del cuerpo de la función
+  const ymd = ymdFromAny(item.created_at);
+  const friendly = formatEsArYMD(ymd);
+
+  // Se añade el 'return' para devolver el JSX
+  return (
     <Animated.View entering={FadeInUp.duration(500)}>
-        <Pressable 
-            style={[styles.card, { backgroundColor: colors.white, borderColor: colors.border }]}
-            onPress={() => router.push({ pathname: "/list/[id]", params: { id: String(item.id) } })}
-        >
-            <View style={[styles.cardIcon, { backgroundColor: colors.white }]}>
-                <Ionicons name="list-outline" size={24} color={colors.primary} />
-            </View>
-            <View style={styles.cardTextContainer}>
-                <Text style={[styles.cardTitle, { color: colors.text }]}>{item.nombre}</Text>
-                <Text style={[styles.cardSubtitle, { color: colors.tertiary }]}>
-                    Creada el {new Date(item.created_at).toLocaleDateString('es-ES')}
-                </Text>
-            </View>
-            <Pressable onPress={() => onDelete(item.id, item.nombre)} style={styles.deleteButton} hitSlop={10}>
-                {deletingId === item.id ? 
-                    <ActivityIndicator size="small" /> :
-                    <Ionicons name="trash-outline" size={22} color={colors.error} />
-                }
-            </Pressable>
+      <Pressable 
+        style={[styles.card, { backgroundColor: colors.white, borderColor: colors.border }]}
+        onPress={() => router.push({ pathname: "/list/[id]", params: { id: String(item.id) } })}
+      >
+        <View style={[styles.cardIcon, { backgroundColor: colors.white }]}>
+          <Ionicons name="list-outline" size={24} color={colors.primary} />
+        </View>
+        <View style={styles.cardTextContainer}>
+          <Text style={[styles.cardTitle, { color: colors.text }]}>{item.nombre}</Text>
+          <Text style={[styles.cardSubtitle, { color: colors.tertiary }]}>
+            {friendly ? `Creada el ${friendly}` : "Sin fecha"}
+          </Text>
+        </View>
+        <Pressable onPress={() => onDelete(item.id, item.nombre)} style={styles.deleteButton} hitSlop={10}>
+          {deletingId === item.id ? 
+            <ActivityIndicator size="small" /> :
+            <Ionicons name="trash-outline" size={22} color={colors.error} />
+          }
         </Pressable>
+      </Pressable>
     </Animated.View>
   );
-
+};
   return (
     <View style={[styles.root, { backgroundColor: colors.background }]}>
       <WaveBackground />
@@ -139,7 +205,11 @@ export default function PurchasesMenu() {
 
             </Animated.View>
           }
-          renderItem={({ item }) => <ListCard item={item} />}
+          renderItem={({ item }) => <ListCard
+              item={item} 
+              onDelete={onDelete} 
+              deletingId={deletingId} 
+            />}
           ListEmptyComponent={
             !loading ? (
               <View style={styles.emptyContainer}>
