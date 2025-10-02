@@ -51,7 +51,7 @@ export default function RecentListsScreen() {
         onPress={() => router.push({ pathname: "/list/[id]", params: { id: String(item.id) } })}
         style={[styles.card, { backgroundColor: colors.white, borderColor: colors.border }]}
       >
-        <View style={[styles.cardIcon, { backgroundColor: colors.primary_bg }]}>
+        <View style={[styles.cardIcon, { backgroundColor: colors.white }]}>
             <Ionicons name="list-outline" size={24} color={colors.primary} />
         </View>
         <View style={styles.cardTextContainer}>
