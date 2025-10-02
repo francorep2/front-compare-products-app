@@ -1,11 +1,11 @@
 import { Ionicons } from "@expo/vector-icons";
 import { useFocusEffect, useRouter } from "expo-router";
 import { useCallback, useState } from "react";
-import { ActivityIndicator, FlatList, Pressable, RefreshControl, StyleSheet, Text, View } from "react-native";
+import { ActivityIndicator, FlatList, Pressable, RefreshControl, StyleSheet, Text, View, Alert } from "react-native";
 import Animated, { FadeInUp } from "react-native-reanimated";
 import { SafeAreaView } from "react-native-safe-area-context";
 
-import { getMyLists } from "../../../api/endpoints";
+import { getMyLists, deleteList } from "../../../api/endpoints";
 import type { ShoppingListOut } from "../../../api/types";
 import { Button } from "../../../components/ui/Button";
 import { useTheme } from "../../../providers/theme";
@@ -64,6 +64,7 @@ export default function RecentListsScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [deletingId, setDeletingId] = useState<number | null>(null);
 
   const load = async () => {
     try {
@@ -95,6 +96,27 @@ export default function RecentListsScreen() {
     load();
   };
 
+  const onDelete = (id: number, name: string) => {
+    Alert.alert("Eliminar lista", `¿Quieres borrar "${name}"?`, [
+      { text: "Cancelar", style: "cancel" },
+      {
+        text: "Eliminar",
+        style: "destructive",
+        onPress: async () => {
+          setDeletingId(id);
+          try {
+            await deleteList(id);
+            setData(prev => prev.filter(l => l.id !== id));
+          } catch (e: any) {
+            Alert.alert("Error", e?.message || "No se pudo eliminar la lista.");
+          } finally {
+            setDeletingId(null);
+          }
+        },
+      },
+    ]);
+  };
+
   const renderItem = ({ item, index }: { item: ShoppingListOut, index: number }) => {
     const ymd = ymdFromAny(item.created_at);
     const friendly = formatEsArYMD(ymd);
@@ -114,7 +136,16 @@ export default function RecentListsScreen() {
               {friendly ? `Creada el ${friendly}` : "Sin fecha"}
             </Text>
           </View>
-          <Ionicons name="chevron-forward" size={22} color={colors.gray200} />
+          <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+            {deletingId === item.id ? (
+              <ActivityIndicator size="small" color={colors.error} style={{ marginRight: 12 }} />
+            ) : (
+              <Pressable onPress={() => onDelete(item.id, item.nombre)} hitSlop={8} style={{ padding: 6, marginRight: 8 }}>
+                <Ionicons name="trash-outline" size={20} color={colors.error} />
+              </Pressable>
+            )}
+            <Ionicons name="chevron-forward" size={22} color={colors.gray200} />
+          </View>
         </Pressable>
       </Animated.View>
     );
