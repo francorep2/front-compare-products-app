@@ -205,7 +205,11 @@ function formatEsArYMD(ymd: string | null): string {
 
             </Animated.View>
           }
-          renderItem={({ item }) => <ListCard item={item} />}
+          renderItem={({ item }) => <ListCard
+              item={item} 
+              onDelete={onDelete} 
+              deletingId={deletingId} 
+            />}
           ListEmptyComponent={
             !loading ? (
               <View style={styles.emptyContainer}>
