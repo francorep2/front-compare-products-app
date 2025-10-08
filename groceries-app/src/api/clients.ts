@@ -1,19 +1,29 @@
 // src/api/clients.ts
+import Constants from "expo-constants";
 import * as SecureStore from "expo-secure-store";
 
-// 1) Resolver BASE_URL desde varios lugares y normalizar
 
-export const BASE_URL = process.env.EXPO_PUBLIC_API_URL
+function resolveBaseUrl() {
+  const fromExpoConfig = (Constants?.expoConfig as any)?.extra?.EXPO_PUBLIC_API_URL;
+  const fromManifest = (Constants as any)?.manifest?.extra?.EXPO_PUBLIC_API_URL;
+  const fromEnv = process.env.EXPO_PUBLIC_API_URL;
+
+  const raw = (fromExpoConfig || fromManifest || fromEnv || "").trim();
+  const withProtocol = raw && !/^https?:\/\//i.test(raw) ? `https://${raw}` : raw;
+  return (withProtocol || "").replace(/\/+$/, "");
+}
+
+export const BASE_URL = resolveBaseUrl();
 
 if (!BASE_URL) {
-  console.warn("⚠️ BASE_URL vacío. Configurá EXPO_PUBLIC_API_URL en app.json o .env");
+  console.warn("⚠️ BASE_URL vacío. Configurá EXPO_PUBLIC_API_URL en app.config.js o .env");
+  console.log("URL:" ,BASE_URL)
 } else {
   console.log("🌐 BASE_URL =", BASE_URL);
 }
 
-// 2) Helpers de token (usá SIEMPRE la misma key en todo el app)
 const TOKEN_KEY = "access_token";
-let memoryToken: string | null = null; 
+let memoryToken: string | null = null;
 
 export async function getToken() {
   if (memoryToken != null) return memoryToken;
@@ -22,7 +32,7 @@ export async function getToken() {
 }
 
 export async function setToken(t: string | null) {
-  memoryToken = t; 
+  memoryToken = t;
   if (!t) return SecureStore.deleteItemAsync(TOKEN_KEY);
   return SecureStore.setItemAsync(TOKEN_KEY, t);
 }
@@ -47,7 +57,6 @@ export async function request<T>(path: string, init: RequestInit = {}): Promise<
   const safePath = path.startsWith("/") ? path : `/${path}`;
   const url = `${BASE_URL}${safePath}`;
 
-  
   const headers: HeadersInit = {
     ...(init.body instanceof FormData ? {} : { "Content-Type": "application/json" }),
     ...(token ? { Authorization: `Bearer ${token}` } : {}),
@@ -61,7 +70,6 @@ export async function request<T>(path: string, init: RequestInit = {}): Promise<
   try {
     res = await fetch(url, { ...init, headers });
   } catch (netErr: any) {
-    // Esto captura 'Network request failed'
     console.error("❌ Error de Conexión:", netErr?.message || netErr);
     throw new Error("No se pudo conectar al servidor. Verificá IP/puerto/firewall.");
   }

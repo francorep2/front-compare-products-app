@@ -43,7 +43,7 @@ export default function ProfileScreen() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [sources, setSources] = useState<ScrapeSources>({
-    carrefour: true, coto: true, jumbo: true, dia: true,
+    carrefour: true, coto: false, jumbo: true, dia: true,
   });
 
   useEffect(() => {

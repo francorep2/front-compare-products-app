@@ -10,8 +10,9 @@ import {
   Platform,
   ScrollView,
   StyleSheet,
+  Text,
   TextInput,
-  View
+  View,
 } from "react-native";
 import Animated, { FadeInUp } from "react-native-reanimated";
 import Svg, { Defs, Path, Stop, LinearGradient as SvgGradient } from "react-native-svg";
@@ -20,10 +21,8 @@ import { z } from "zod";
 import { registerStart } from "../../api/endpoints";
 import { Button } from "../../components/ui/Button";
 import { PasswordInput } from "../../components/ui/PasswordInput";
-import { Text } from "../../components/ui/Text";
 import { useTheme } from "../../providers/theme";
 
-// --- Esquema de validación con Zod ---
 const schema = z
   .object({
     firstName: z.string().min(2, "El nombre debe tener al menos 2 caracteres."),
@@ -39,15 +38,14 @@ const schema = z
 
 type FormValues = z.infer<typeof schema>;
 
-// --- Componente para el fondo de ola ---
 const WaveBackground = () => {
   const { colors } = useTheme();
   const { width } = Dimensions.get('window');
   const height = 200;
 
   return (
-    <View pointerEvents="none" style={{ position: 'absolute', top: 0, left: 0, right: 0, height }}>
-      <Svg pointerEvents="none" height="100%" width="100%" viewBox={`0 0 ${width} ${height}`}>
+    <View style={{ position: 'absolute', top: 0, left: 0, right: 0, height }}>
+      <Svg height="100%" width="100%" viewBox={`0 0 ${width} ${height}`}>
         <Defs>
           <SvgGradient id="grad" x1="0%" y1="0%" x2="0%" y2="100%">
             <Stop offset="0%" stopColor={colors.primary} stopOpacity="1" />
@@ -63,7 +61,6 @@ const WaveBackground = () => {
   );
 };
 
-// --- Componente de Input controlado ---
 const ControlledInput = ({ control, name, placeholder, icon, ...props }) => {
   const { colors } = useTheme();
   return (
@@ -71,23 +68,9 @@ const ControlledInput = ({ control, name, placeholder, icon, ...props }) => {
       control={control}
       name={name}
       render={({ field: { onChange, onBlur, value }, fieldState: { error } }) => (
-        <View
-          pointerEvents="box-none"   // 👈 deja pasar toques a hijos
-          style={{ zIndex: 2 }}      // 👈 por si hay overlays
-        >
-          <View
-            style={[
-              styles.inputContainer,
-              { borderColor: error ? colors.error : colors.border, zIndex: 2, elevation: 2 }
-            ]}
-          >
-            <Ionicons
-              name={icon}
-              size={20}
-              color={colors.secondary}
-              style={styles.inputIcon}
-              pointerEvents="none"    // 👈 que el icono no intercepte el tap
-            />
+        <View style={styles.fieldContainer}>
+          <View style={[styles.inputContainer, { borderColor: error ? colors.error : colors.border }]}>
+            <Ionicons name={icon} size={20} color={colors.primary} style={styles.inputIcon} />
             <TextInput
               value={value}
               onChangeText={onChange}
@@ -105,12 +88,12 @@ const ControlledInput = ({ control, name, placeholder, icon, ...props }) => {
   );
 };
 
-// --- Pantalla Principal ---
 export default function RegisterScreen() {
   const { colors } = useTheme();
   const router = useRouter();
 
-  const { control, handleSubmit } = useForm<FormValues>({
+  // --- 1. OBTENEMOS 'isSubmitting' DEL HOOK ---
+  const { control, handleSubmit, formState: { isSubmitting } } = useForm<FormValues>({
     resolver: zodResolver(schema),
     defaultValues: { firstName: "", lastName: "", email: "", password: "", confirmPassword: "" },
   });
@@ -137,30 +120,25 @@ export default function RegisterScreen() {
     <View style={[styles.root, { backgroundColor: colors.background }]}>
       <WaveBackground />
       <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === "ios" ? "padding" : "height"}>
-        <ScrollView contentContainerStyle={styles.container} keyboardShouldPersistTaps="always"   contentInsetAdjustmentBehavior="always">
+        <ScrollView contentContainerStyle={styles.container} keyboardShouldPersistTaps="handled">
           <Animated.View entering={FadeInUp.duration(800).delay(200)} style={styles.content}>
             <Image source={require("../../../assets/logo.png")} style={styles.logo} />
             <Text style={[styles.title, { color: colors.text }]}>Crea tu cuenta</Text>
-            <Text style={[styles.subtitle, { color: colors.secondary }]}>Completa tus datos para empezar</Text>
+            <Text style={[styles.subtitle, { color: colors.gray500 }]}>Completa tus datos para empezar</Text>
             
             <View style={styles.form}>
-                    <ControlledInput control={control} name="firstName" placeholder="Nombre" icon="person-outline" />
+              <ControlledInput control={control} name="firstName" placeholder="Nombre" icon="person-outline" />
               <ControlledInput control={control} name="lastName" placeholder="Apellido" icon="person-outline" />
-              <ControlledInput control={control} name="email" placeholder="Email" icon="mail-outline" />
-              
-      
+              <ControlledInput control={control} name="email" placeholder="Email" icon="mail-outline" keyboardType="email-address" autoCapitalize="none" />
               
               <Controller
-                control={control}
-                name="password"
+                control={control} name="password"
                 render={({ field: { onChange, onBlur, value }, fieldState: { error } }) => (
-                    <View>
+                    <View style={styles.fieldContainer}>
                         <View style={[styles.inputContainer, { borderColor: error ? colors.error : colors.border }]}>
-                            <Ionicons name="lock-closed-outline" size={20} color={colors.secondary} style={styles.inputIcon} />
+                            <Ionicons name="lock-closed-outline" size={20} color={colors.primary} style={styles.inputIcon} />
                             <PasswordInput
-                                value={value}
-                                onChangeText={onChange}
-                                onBlur={onBlur}
+                                value={value} onChangeText={onChange} onBlur={onBlur}
                                 placeholder="Contraseña"
                                 style={[styles.input, { flex: 1, color: colors.text }]}
                                 placeholderTextColor={colors.gray400}
@@ -171,16 +149,13 @@ export default function RegisterScreen() {
                 )}
               />
               <Controller
-                control={control}
-                name="confirmPassword"
+                control={control} name="confirmPassword"
                 render={({ field: { onChange, onBlur, value }, fieldState: { error } }) => (
-                    <View>
+                    <View style={styles.fieldContainer}>
                         <View style={[styles.inputContainer, { borderColor: error ? colors.error : colors.border }]}>
-                            <Ionicons name="lock-closed-outline" size={20} color={colors.secondary} style={styles.inputIcon} />
+                            <Ionicons name="lock-closed-outline" size={20} color={colors.primary} style={styles.inputIcon} />
                             <PasswordInput
-                                value={value}
-                                onChangeText={onChange}
-                                onBlur={onBlur}
+                                value={value} onChangeText={onChange} onBlur={onBlur}
                                 placeholder="Confirmar contraseña"
                                 style={[styles.input, { flex: 1, color: colors.text }]}
                                 placeholderTextColor={colors.gray400}
@@ -191,16 +166,18 @@ export default function RegisterScreen() {
                 )}
               />
 
+              {/* --- 2. PASAMOS 'isSubmitting' A LA PROP 'loading' --- */}
               <Button
                 title="Crear Cuenta"
                 onPress={handleSubmit(onSubmit)}
+                loading={isSubmitting} 
                 style={[styles.submitButton, { backgroundColor: colors.primary }]}
                 textStyle={styles.submitButtonText}
               />
             </View>
 
             <View style={styles.footer}>
-              <Text style={[styles.footerText, { color: colors.secondary }]}>
+              <Text style={[styles.footerText, { color: colors.tertiary }]}>
                 ¿Ya tienes una cuenta?{" "}
                 <Link href="/login" asChild>
                     <Text style={[styles.linkText, { color: colors.primary }]}>
@@ -216,7 +193,6 @@ export default function RegisterScreen() {
   );
 }
 
-// --- ESTILOS VISUALES ---
 const styles = StyleSheet.create({
   root: { flex: 1 },
   container: {
@@ -254,6 +230,9 @@ const styles = StyleSheet.create({
   form: {
     width: '100%',
   },
+  fieldContainer: {
+    marginBottom: 4,
+  },
   inputContainer: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -261,7 +240,6 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     paddingHorizontal: 16,
     backgroundColor: '#F9F9F9',
-    marginBottom: 4, // Espacio reducido para que el error quede cerca
   },
   inputIcon: {
     marginRight: 12,
@@ -274,7 +252,8 @@ const styles = StyleSheet.create({
   errorText: {
     color: 'red',
     fontSize: 12,
-    marginBottom: 12, // Espacio después del error
+    marginTop: 4,
+    marginBottom: 8,
     paddingLeft: 4,
   },
   submitButton: {
@@ -283,11 +262,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     marginTop: 16,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.2,
-    shadowRadius: 5,
-    elevation: 5,
   },
   submitButtonText: {
     fontSize: 16,
