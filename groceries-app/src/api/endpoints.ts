@@ -190,6 +190,10 @@ export function searchAllBarcode(barcode: string, limit = 3, enabled?: string[] 
   return request<SearchRawResponse>(url);
 }
 
+export function apiDeleteList(listId: number): Promise<void> {
+  return request<void>(`/shopping/lists/${listId}`, { method: "DELETE" });
+}
+
 // ---------- SCRAPER CONFIG ----------
 type BackendScrapeSources = {
   include_carrefour: boolean;
