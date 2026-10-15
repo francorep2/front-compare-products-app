@@ -1,9 +1,12 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
-import * as api from "./api";
+import { useQueryClient } from "@tanstack/react-query";
+import * as client from "./api/client";
+import * as api from "./api/endpoints";
+import type { Me } from "./api/types";
 
 type AuthCtx = {
   token: string | null;
-  user: api.Me | null;
+  user: Me | null;
   loading: boolean;
   signIn: (token: string) => Promise<void>;
   signOut: () => void;
@@ -18,34 +21,37 @@ export const useAuth = () => {
 };
 
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [token, setTok] = useState<string | null>(api.getToken());
-  const [user, setUser] = useState<api.Me | null>(null);
-  const [loading, setLoading] = useState<boolean>(!!api.getToken());
+  const qc = useQueryClient();
+  const [token, setTok] = useState<string | null>(client.getToken());
+  const [user, setUser] = useState<Me | null>(null);
+  const [loading, setLoading] = useState<boolean>(!!client.getToken());
 
   const signOut = useCallback(() => {
-    api.setToken(null);
+    client.setToken(null);
     setTok(null);
     setUser(null);
-  }, []);
+    qc.clear(); // no dejar datos del usuario anterior en memoria
+  }, [qc]);
 
   const refreshUser = useCallback(async () => {
     setUser(await api.me());
   }, []);
 
   const signIn = useCallback(async (t: string) => {
-    api.setToken(t);
+    client.setToken(t);
+    const u = await api.me(); // primero el usuario, así Home nunca se ve "vacío"
+    setUser(u);
     setTok(t);
-    setUser(await api.me());
   }, []);
 
   useEffect(() => {
-    api.setUnauthorizedHandler(signOut);
-    return () => api.setUnauthorizedHandler(null);
+    client.setUnauthorizedHandler(signOut);
+    return () => client.setUnauthorizedHandler(null);
   }, [signOut]);
 
   // Al abrir la web con un token guardado, lo validamos.
   useEffect(() => {
-    if (!api.getToken()) return;
+    if (!client.getToken()) return;
     api.me().then(setUser).catch(() => signOut()).finally(() => setLoading(false));
   }, [signOut]);
 

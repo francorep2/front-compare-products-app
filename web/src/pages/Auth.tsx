@@ -1,10 +1,15 @@
 import { useState, type FormEvent } from "react";
 import { Link, Navigate, useNavigate } from "react-router-dom";
-import { IoLockClosedOutline, IoMailOutline, IoPersonOutline, IoKeyOutline } from "react-icons/io5";
-import * as api from "../api";
+import { IoKeyOutline, IoLockClosedOutline, IoMailOutline, IoPersonOutline } from "react-icons/io5";
+import * as api from "../api/endpoints";
+import { ApiError } from "../api/client";
 import { useAuth } from "../auth";
-import { AuthScreen } from "../components/Layout";
-import { ErrorBox, Field, errMsg, isEmail } from "../components/ui";
+import { AuthScreen } from "../layout/Shell";
+import { Field } from "../ui/Field";
+import { ErrorBox } from "../ui/Misc";
+import { errMsg } from "../ui/Toast";
+
+const isEmail = (v: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v);
 
 function Brand({ title, subtitle }: { title: string; subtitle: string }) {
   return (
@@ -37,7 +42,7 @@ export function Login() {
       await signIn(r.access_token);
       nav("/home", { replace: true });
     } catch (e2) {
-      setErr(e2 instanceof api.ApiError && e2.status === 401 ? "Mail o Contraseña incorrectos" : errMsg(e2));
+      setErr(e2 instanceof ApiError && e2.status === 401 ? "Mail o contraseña incorrectos" : errMsg(e2));
     } finally {
       setBusy(false);
     }

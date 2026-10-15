@@ -1,0 +1,67 @@
+/* Tokens de diseño. Marca = la de la app móvil (groceries-app/src/theme). */
+:root {
+  --primary: #fd1648;
+  --primary-600: #e00f3d;
+  --primary-50: #fff1f4;
+  --secondary: #ff1058;
+  --tertiary: #4a5899;
+  --success: #2fa84f;
+  --success-50: #eafaf0;
+  --warning: #ffdd61;
+  --warning-50: #fff8e1;
+  --error: #e5102c;
+  --error-50: #fff0f2;
+
+  --bg: #f4f5f7;
+  --surface: #ffffff;
+  --surface-2: #fafafb;
+  --text: #22252b;
+  --text-2: #5b616d;
+  --text-3: #8d93a0;
+  --border: #e6e8ec;
+  --nav-idle: #ff90b1;
+  --shadow-sm: 0 1px 3px rgba(20, 24, 40, 0.06);
+  --shadow: 0 2px 12px rgba(20, 24, 40, 0.08);
+  --shadow-lg: 0 8px 30px rgba(20, 24, 40, 0.14);
+  --overlay: rgba(14, 16, 24, 0.5);
+
+  --radius-sm: 8px;
+  --radius: 12px;
+  --radius-lg: 16px;
+  --radius-xl: 20px;
+  --bar-h: 68px;
+  --sidebar-w: 248px;
+  --ring: 0 0 0 3px rgba(253, 22, 72, 0.22);
+
+  /* colores por tienda (barras / acentos) */
+  --store-coto: #e53935;
+  --store-carrefour: #1e63b5;
+  --store-jumbo: #2e9e44;
+  --store-dia: #d81b60;
+}
+
+[data-theme="dark"] {
+  --primary: #ff3d68;
+  --primary-600: #ff5a7e;
+  --primary-50: #3a1520;
+  --tertiary: #8b9bdc;
+  --success: #46c96a;
+  --success-50: #14301e;
+  --warning-50: #3a3115;
+  --error: #ff5c70;
+  --error-50: #3a1820;
+
+  --bg: #0f1116;
+  --surface: #181b22;
+  --surface-2: #1e222b;
+  --text: #eceef3;
+  --text-2: #a8afbd;
+  --text-3: #7b8292;
+  --border: #2a2f3a;
+  --nav-idle: #8a5565;
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.4);
+  --shadow: 0 2px 12px rgba(0, 0, 0, 0.45);
+  --shadow-lg: 0 8px 30px rgba(0, 0, 0, 0.6);
+  --overlay: rgba(0, 0, 0, 0.65);
+  --ring: 0 0 0 3px rgba(255, 61, 104, 0.3);
+}
