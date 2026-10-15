@@ -50,9 +50,9 @@ export function BottomBar() {
 
 /** Layout de las pantallas con sesión: ola + contenido + barra inferior. */
 export function MainLayout() {
-  const { token, loading } = useAuth();
+  const { token, user, loading } = useAuth();
   if (!token) return <Navigate to="/login" replace />;
-  if (loading) return <div className="screen"><Spinner label="Cargando..." /></div>;
+  if (loading || !user) return <div className="screen"><Spinner label="Cargando..." /></div>;
   return (
     <div className="screen with-bar">
       <Wave />
