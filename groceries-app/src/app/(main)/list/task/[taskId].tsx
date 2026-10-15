@@ -115,6 +115,8 @@ export default function ComparisonResultsScreen() {
         return <View style={styles.container}><Text>Error: {error}</Text></View>
     }
 
+    if (!result) return null;
+
     // --- Vista de Resultados ---
     return (
         <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
@@ -163,11 +165,6 @@ const styles = StyleSheet.create({
         width: 32,
         height: 32,
         borderRadius: 8,
-    },
-    storeName: { 
-        fontSize: 18, 
-        fontWeight: 'bold', 
-        textTransform: 'capitalize',
     },
     winnerText: { fontSize: 18, marginLeft: 12, flex: 1 },
     card: { 

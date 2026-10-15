@@ -7,6 +7,9 @@ text: string
 background: string
 muted: string
 border: string
+card: string
+surface: string
+textSecondary: string
 }
 radii: { xs: number; sm: number; md: number; lg: number; full: number }
 spacing: { xs: number; sm: number; md: number; lg: number; xl: number }
@@ -21,6 +24,9 @@ text: colors.gray800,
 background: colors.white,
 muted: colors.gray100,
 border: colors.gray300,
+card: colors.white,
+surface: colors.white,
+textSecondary: colors.gray600,
 },
 radii: { xs: 4, sm: 6, md: 10, lg: 14, full: 999 },
 spacing: { xs: 6, sm: 10, md: 14, lg: 18, xl: 24 },

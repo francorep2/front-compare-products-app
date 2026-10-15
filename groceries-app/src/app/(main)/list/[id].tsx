@@ -348,7 +348,7 @@ export default function ListDetailScreen() {
     setRefreshing(true);
     load();
   };
-  const enabled = useMemo(() => sourcesToEnabled(sources || {}), [sources]);
+  const enabled = useMemo(() => sourcesToEnabled(sources as ScrapeSources), [sources]);
 
   const setRow = (idx: number, patch: Partial<Row>) =>
     setRows((prev) => {
