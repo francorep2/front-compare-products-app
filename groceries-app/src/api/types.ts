@@ -15,6 +15,8 @@ export interface MeOut {
   id: number;
   email: string;
   is_verified: boolean;
+  first_name?: string | null;
+  last_name?: string | null;
 }
 
 // --- SHOPPING LISTS ---
