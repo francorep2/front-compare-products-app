@@ -1,0 +1,10 @@
+{
+  "name": "Changuito (beta)",
+  "short_name": "Changuito",
+  "description": "Comparador de precios de supermercados",
+  "start_url": "/home",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#FD1648",
+  "icons": [{ "src": "/logo.png", "sizes": "512x512", "type": "image/png" }]
+}

@@ -1,194 +1,227 @@
-import { useEffect, useState, type FormEvent } from "react";
-import { useNavigate, useParams } from "react-router-dom";
-import { IoAdd, IoCheckmarkCircle, IoChevronForward, IoEllipseOutline, IoTrashOutline } from "react-icons/io5";
-import * as api from "../api";
-import { PageHeader } from "../components/Layout";
-import { ErrorBox, Field, Spinner, errMsg } from "../components/ui";
-import { IoCartOutline, IoStatsChartOutline } from "react-icons/io5";
+import { useState } from "react";
+import { useNavigate, useSearchParams } from "react-router-dom";
+import { useMutation } from "@tanstack/react-query";
+import {
+  IoAdd, IoCartOutline, IoCheckbox, IoCopyOutline, IoGitCompareOutline, IoSquareOutline, IoStatsChartOutline, IoTrashOutline,
+} from "react-icons/io5";
+import * as api from "../api/endpoints";
+import { useHistory, useInvalidate, useListsWithItems, useSources } from "../api/queries";
+import type { ListDetail } from "../api/types";
+import { PageHeader } from "../layout/Shell";
+import { dateTime, money, plural, timeAgo } from "../lib/format";
+import { qtyNumber } from "../lib/parse";
+import { getItemBarcodes } from "../lib/storage";
+import { Confirm, Modal } from "../ui/Modal";
+import { EmptyState, ErrorBox, Progress, SkeletonCards, StoreBadge, Tabs } from "../ui/Misc";
+import { errMsg, useToast } from "../ui/Toast";
 
-type Draft = { nombre: string; cantidad: string };
+type Tab = "lists" | "comparisons";
 
-/** Nueva lista: se arma en memoria y se guarda de una vez (igual que la app). */
-export function NewList() {
-  const nav = useNavigate();
-  const [nombre, setNombre] = useState("");
-  const [items, setItems] = useState<Draft[]>([]);
-  const [prod, setProd] = useState("");
-  const [qty, setQty] = useState("1");
-  const [busy, setBusy] = useState(false);
-  const [err, setErr] = useState("");
-
-  const add = (e: FormEvent) => {
-    e.preventDefault();
-    if (!prod.trim()) return;
-    setItems([...items, { nombre: prod.trim(), cantidad: qty.trim() || "1" }]);
-    setProd(""); setQty("1");
-  };
-
-  const save = async () => {
-    setErr(""); setBusy(true);
-    try {
-      const list = await api.createList(nombre.trim());
-      for (const it of items) await api.addItem(list.id, it.nombre, it.cantidad);
-      nav(`/list/${list.id}`, { replace: true });
-    } catch (e) { setErr(errMsg(e)); setBusy(false); }
-  };
-
+/** Mis listas + historial de comparaciones (con la herramienta "comparar carritos"). */
+export function Lists() {
+  const [params, setParams] = useSearchParams();
+  const tab: Tab = params.get("tab") === "comparisons" ? "comparisons" : "lists";
   return (
     <>
-      <PageHeader title="Nueva lista" subtitle="Agregá tus productos y compará precios" />
+      <PageHeader title="Mis listas" subtitle="Tus listas de compras y tus comparaciones guardadas." />
       <div className="content">
-        <div className="card">
-          <Field placeholder="Nombre de la lista (ej: Compras del mes)" value={nombre} onChange={(e) => setNombre(e.target.value)} />
-          <form className="add-row" onSubmit={add}>
-            <Field placeholder="Agregar un producto..." value={prod} onChange={(e) => setProd(e.target.value)} />
-            <Field className="qty-field" aria-label="Cantidad" inputMode="numeric" value={qty} onChange={(e) => setQty(e.target.value)} style={{ textAlign: "center" }} />
-            <button className="btn" aria-label="Agregar"><IoAdd size={24} /></button>
-          </form>
-        </div>
-
-        <div className="card flush">
-          {items.length === 0 ? (
-            <div className="empty"><b>Tu lista está vacía</b>Agrega productos usando el formulario superior.</div>
-          ) : items.map((it, i) => (
-            <div className="item" key={i}>
-              <span className="name">{it.nombre}</span>
-              <span style={{ color: "var(--gray500)" }}>x{it.cantidad}</span>
-              <button className="icon-plain" aria-label="Quitar" onClick={() => setItems(items.filter((_, j) => j !== i))}><IoTrashOutline size={20} /></button>
-            </div>
-          ))}
-        </div>
-
-        <ErrorBox>{err}</ErrorBox>
-        <button className="btn" disabled={!nombre.trim() || busy} onClick={save}>{busy ? "Guardando..." : "Guardar lista"}</button>
+        <Tabs value={tab} onChange={(t) => setParams(t === "lists" ? {} : { tab: t })} tabs={[{ id: "lists", label: "Listas" }, { id: "comparisons", label: "Comparaciones" }]} />
+        {tab === "lists" ? <ListsTab /> : <ComparisonsTab />}
       </div>
     </>
   );
 }
 
-/** Mis listas. */
-export function Purchases() {
+function ListsTab() {
   const nav = useNavigate();
-  const [lists, setLists] = useState<api.ShoppingList[] | null>(null);
-  const [err, setErr] = useState("");
+  const { data: lists, isLoading, error } = useListsWithItems();
+  const inv = useInvalidate();
+  const { toast } = useToast();
+  const [toDelete, setToDelete] = useState<ListDetail | null>(null);
 
-  const load = () => api.getLists().then((l) => setLists([...l].reverse())).catch((e) => setErr(errMsg(e)));
-  useEffect(() => { load(); }, []);
+  const remove = useMutation({
+    mutationFn: (id: number) => api.deleteList(id),
+    onSuccess: () => { inv.lists(); toast("Lista eliminada"); },
+    onError: (e) => toast(errMsg(e), "error"),
+  });
+  const duplicate = useMutation({
+    mutationFn: async (l: ListDetail) => {
+      const copy = await api.createList(`${l.nombre} (copia)`);
+      for (const it of l.items) await api.addItem(copy.id, it.nombre, it.cantidad);
+      return copy;
+    },
+    onSuccess: (copy) => { inv.lists(); toast("Lista duplicada"); nav(`/list/${copy.id}`); },
+    onError: (e) => toast(errMsg(e), "error"),
+  });
 
-  const remove = async (id: number) => {
-    if (!confirm("¿Eliminar esta lista?")) return;
-    try { await api.deleteList(id); setLists((ls) => (ls || []).filter((l) => l.id !== id)); } catch (e) { setErr(errMsg(e)); }
-  };
+  if (isLoading) return <SkeletonCards n={3} />;
+  if (error) return <ErrorBox>{errMsg(error)}</ErrorBox>;
 
   return (
     <>
-      <PageHeader title="Mis Listas" subtitle="Aquí encontrarás tus listas de compras guardadas." />
-      <div className="content">
-        <ErrorBox>{err}</ErrorBox>
-        {lists === null && !err ? <Spinner /> : lists && lists.length === 0 ? (
-          <div className="card empty"><b>Aún no tienes listas</b>Crea tu primera lista con el botón (+)</div>
-        ) : (
-          <div className="card flush">
-            {lists?.map((l) => (
-              <div className="row" key={l.id} onClick={() => nav(`/list/${l.id}`)}>
-                <IoCartOutline className="lead" size={24} />
-                <div className="grow">
-                  <div className="title">{l.nombre}</div>
-                  <div className="desc">Creada el {l.created_at}</div>
+      <div className="toolbar">
+        <button className="btn small" onClick={() => nav("/new-list")}><IoAdd size={18} /> Nueva lista</button>
+      </div>
+      {!lists || lists.length === 0 ? (
+        <div className="card">
+          <EmptyState icon={<IoCartOutline size={40} />} title="Aún no tienes listas" action={<button className="btn small" onClick={() => nav("/new-list")}>Crear tu primera lista</button>}>
+            Armá una lista y compará precios entre supermercados.
+          </EmptyState>
+        </div>
+      ) : (
+        <div className="grid">
+          {[...lists].sort((a, b) => b.id - a.id).map((l) => {
+            const done = l.items.filter((i) => i.done).length;
+            return (
+              <div className="card list-card" key={l.id} onClick={() => nav(`/list/${l.id}`)} role="link" tabIndex={0} onKeyDown={(e) => e.key === "Enter" && nav(`/list/${l.id}`)}>
+                <div className="list-card-top">
+                  <IoCartOutline size={26} className="lead" />
+                  <div className="grow">
+                    <div className="title">{l.nombre}</div>
+                    <div className="desc">{plural(l.items.length, "producto", "productos")} · creada el {l.created_at}</div>
+                  </div>
                 </div>
-                <button className="icon-plain" aria-label="Eliminar" onClick={(e) => { e.stopPropagation(); remove(l.id); }}><IoTrashOutline size={20} /></button>
-                <IoChevronForward className="chev" size={22} />
+                {l.items.length > 0 && (
+                  <>
+                    <Progress value={done} total={l.items.length} />
+                    <div className="desc">{done}/{l.items.length} comprados</div>
+                  </>
+                )}
+                <div className="list-card-actions" onClick={(e) => e.stopPropagation()}>
+                  <button className="icon-plain" title="Duplicar" aria-label="Duplicar" onClick={() => duplicate.mutate(l)}><IoCopyOutline size={19} /></button>
+                  <button className="icon-plain" title="Eliminar" aria-label="Eliminar" onClick={() => setToDelete(l)}><IoTrashOutline size={19} /></button>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+      {toDelete && (
+        <Confirm title="Eliminar lista" text={`Vas a eliminar "${toDelete.nombre}" y sus ${toDelete.items.length} productos.`} onConfirm={() => remove.mutate(toDelete.id)} onClose={() => setToDelete(null)} />
+      )}
+    </>
+  );
+}
+
+function ComparisonsTab() {
+  const nav = useNavigate();
+  const { data, isLoading, error } = useHistory();
+  const inv = useInvalidate();
+  const { toast } = useToast();
+  const [sel, setSel] = useState<string[]>([]);
+  const [lists, setLists] = useState(false);
+
+  const remove = useMutation({
+    mutationFn: (id: string) => api.deleteComparison(id),
+    onSuccess: (_d, id) => { setSel((s) => s.filter((x) => x !== id)); inv.history(); toast("Comparación eliminada"); },
+    onError: (e) => toast(errMsg(e), "error"),
+  });
+  const toggle = (id: string) => setSel((s) => (s.includes(id) ? s.filter((x) => x !== id) : s.length >= 2 ? [s[1], id] : [...s, id]));
+
+  if (isLoading) return <SkeletonCards n={3} />;
+  if (error) return <ErrorBox>{errMsg(error)}</ErrorBox>;
+  const rows = (data ?? []).filter((h) => h.status === "completed");
+
+  return (
+    <>
+      <div className="toolbar">
+        <button className="btn small ghost" onClick={() => setLists(true)}><IoGitCompareOutline size={18} /> Comparar dos listas</button>
+        <button className="btn small" disabled={sel.length !== 2} onClick={() => nav(`/compare/diff?a=${sel[0]}&b=${sel[1]}`)}>
+          <IoGitCompareOutline size={18} /> Comparar seleccionadas ({sel.length}/2)
+        </button>
+      </div>
+      {rows.length === 0 ? (
+        <div className="card">
+          <EmptyState icon={<IoStatsChartOutline size={40} />} title="Todavía no hay comparaciones">
+            Abrí una lista y tocá <b>Comparar</b>. Acá van a quedar guardadas para ver cómo cambian los precios.
+          </EmptyState>
+        </div>
+      ) : (
+        <>
+          <p className="muted" style={{ marginTop: 0 }}>Tildá dos comparaciones para ver cómo cambió el precio entre una y otra.</p>
+          <div className="card flush">
+            {rows.map((h) => (
+              <div className="row static" key={h.id}>
+                <button className="icon-plain check-btn" aria-label="Seleccionar" onClick={() => toggle(h.id)}>
+                  {sel.includes(h.id) ? <IoCheckbox size={24} color="var(--primary)" /> : <IoSquareOutline size={24} />}
+                </button>
+                <button className="grow row-main" onClick={() => nav(`/compare/${h.id}`)}>
+                  <div className="title">{h.title || "Comparación"}</div>
+                  <div className="desc">{dateTime(h.created_at)} · {timeAgo(h.created_at)} · {plural(h.items_count ?? 0, "producto", "productos")}</div>
+                </button>
+                {h.winner && (
+                  <div className="right-col">
+                    <StoreBadge store={h.winner} size={18} />
+                    <span className="amount-sm">{money(h.totals[h.winner])}</span>
+                  </div>
+                )}
+                <button className="icon-plain" aria-label="Eliminar" onClick={() => remove.mutate(h.id)}><IoTrashOutline size={19} /></button>
               </div>
             ))}
           </div>
-        )}
-      </div>
+        </>
+      )}
+      {lists && <CompareListsModal onClose={() => setLists(false)} />}
     </>
   );
 }
 
-/** Detalle de una lista: marcar, editar cantidades, agregar, comparar. */
-export function ListDetail() {
-  const { id } = useParams();
-  const listId = Number(id);
+/** Compara dos listas (carritos) distintas: lanza una comparación de cada una y abre la vista lado a lado. */
+function CompareListsModal({ onClose }: { onClose: () => void }) {
   const nav = useNavigate();
-  const [list, setList] = useState<api.ListDetail | null>(null);
-  const [err, setErr] = useState("");
-  const [prod, setProd] = useState("");
-  const [qty, setQty] = useState("1");
-  const [comparing, setComparing] = useState(false);
+  const { data: lists } = useListsWithItems();
+  const { data: sources } = useSources();
+  const inv = useInvalidate();
+  const [a, setA] = useState("");
+  const [b, setB] = useState("");
+  const usable = (lists ?? []).filter((l) => l.items.length > 0);
 
-  useEffect(() => { api.getList(listId).then(setList).catch((e) => setErr(errMsg(e))); }, [listId]);
-
-  const patch = (itemId: number, p: Partial<api.ShoppingItem>) =>
-    setList((l) => l && { ...l, items: l.items.map((i) => (i.id === itemId ? { ...i, ...p } : i)) });
-
-  const toggle = async (it: api.ShoppingItem) => {
-    patch(it.id, { done: !it.done });
-    try { await api.updateItem(it.id, { done: !it.done }); } catch (e) { patch(it.id, { done: it.done }); setErr(errMsg(e)); }
-  };
-  const saveQty = async (it: api.ShoppingItem, cantidad: string) => {
-    if (!cantidad.trim() || cantidad === it.cantidad) return;
-    try { await api.updateItem(it.id, { cantidad }); patch(it.id, { cantidad }); } catch (e) { setErr(errMsg(e)); }
-  };
-  const remove = async (it: api.ShoppingItem) => {
-    try { await api.deleteItem(it.id); setList((l) => l && { ...l, items: l.items.filter((i) => i.id !== it.id) }); } catch (e) { setErr(errMsg(e)); }
-  };
-  const add = async (e: FormEvent) => {
-    e.preventDefault();
-    if (!prod.trim()) return;
-    try {
-      const it = await api.addItem(listId, prod.trim(), qty.trim() || "1");
-      setList((l) => l && { ...l, items: [...l.items, it] });
-      setProd(""); setQty("1");
-    } catch (e2) { setErr(errMsg(e2)); }
-  };
-
-  const compare = async () => {
-    if (!list) return;
-    setComparing(true); setErr("");
-    try {
-      const sources = await api.getSources().catch(() => null);
-      const items = list.items.map((i) => ({ nombre: i.nombre, cantidad: Math.max(1, parseInt(i.cantidad, 10) || 1) }));
-      const r = await api.startComparison(items, sources ? api.enabledOf(sources) : [...api.STORES]);
-      nav(`/compare/${r.task_id}`);
-    } catch (e2) { setErr(errMsg(e2)); setComparing(false); }
-  };
-
-  if (!list) return <><PageHeader title="Lista" back="/purchases" /><div className="content">{err ? <ErrorBox>{err}</ErrorBox> : <Spinner />}</div></>;
+  const start = useMutation({
+    mutationFn: async () => {
+      const barcodes = getItemBarcodes();
+      const enabled = api.enabledOf(sources ?? api.ALL_SOURCES);
+      const run = (l: ListDetail) =>
+        api.startComparison(
+          l.items.map((i) => ({ nombre: i.nombre, cantidad: qtyNumber(i.cantidad), barcode: barcodes[String(i.id)] ?? null })),
+          enabled, { list_id: l.id, title: l.nombre },
+        );
+      const la = usable.find((l) => String(l.id) === a)!;
+      const lb = usable.find((l) => String(l.id) === b)!;
+      const [ra, rb] = await Promise.all([run(la), run(lb)]);
+      return [ra.task_id, rb.task_id];
+    },
+    onSuccess: ([ta, tb]) => { inv.history(); nav(`/compare/diff?a=${ta}&b=${tb}`); },
+  });
 
   return (
-    <>
-      <PageHeader title={list.nombre} subtitle={`${list.items.length} producto${list.items.length === 1 ? "" : "s"}`} back="/purchases" />
-      <div className="content">
-        <ErrorBox>{err}</ErrorBox>
-        <div className="card">
-          <form className="add-row" onSubmit={add}>
-            <Field placeholder="Agregar un producto..." value={prod} onChange={(e) => setProd(e.target.value)} />
-            <Field className="qty-field" aria-label="Cantidad" inputMode="numeric" value={qty} onChange={(e) => setQty(e.target.value)} style={{ textAlign: "center" }} />
-            <button className="btn" aria-label="Agregar"><IoAdd size={24} /></button>
-          </form>
-        </div>
-
-        <div className="card flush">
-          {list.items.length === 0 ? <div className="empty"><b>Agrega productos para empezar.</b></div> : list.items.map((it) => (
-            <div className="item" key={it.id}>
-              <button className={`check${it.done ? " on" : ""}`} onClick={() => toggle(it)} aria-label="Marcar">
-                {it.done ? <IoCheckmarkCircle size={26} /> : <IoEllipseOutline size={26} />}
-              </button>
-              <span className={`name${it.done ? " done" : ""}`}>{it.nombre}</span>
-              <span className="qty">
-                x<input defaultValue={it.cantidad} key={it.cantidad} inputMode="numeric" aria-label="Cantidad" onBlur={(e) => saveQty(it, e.target.value)} />
-              </span>
-              <button className="icon-plain" aria-label="Eliminar" onClick={() => remove(it)}><IoTrashOutline size={20} /></button>
-            </div>
+    <Modal
+      title="Comparar dos listas"
+      onClose={onClose}
+      footer={
+        <>
+          <button className="btn ghost" onClick={onClose}>Cancelar</button>
+          <button className="btn" disabled={!a || !b || a === b || start.isPending} onClick={() => start.mutate()}>{start.isPending ? "Iniciando..." : "Comparar"}</button>
+        </>
+      }
+    >
+      {usable.length < 2 ? (
+        <p className="muted" style={{ margin: 0 }}>Necesitás al menos dos listas con productos.</p>
+      ) : (
+        <>
+          <p className="muted" style={{ marginTop: 0 }}>Elegí dos carritos y vemos cuánto sale cada uno en cada supermercado.</p>
+          {[["Carrito A", a, setA], ["Carrito B", b, setB]].map(([label, val, set]) => (
+            <label className="field-wrap" key={label as string}>
+              <span className="field-label">{label as string}</span>
+              <select className="select" value={val as string} onChange={(e) => (set as (v: string) => void)(e.target.value)}>
+                <option value="">Elegir lista…</option>
+                {usable.map((l) => <option key={l.id} value={l.id}>{l.nombre} ({l.items.length})</option>)}
+              </select>
+            </label>
           ))}
-        </div>
-
-        <button className="btn secondary" disabled={list.items.length === 0 || comparing} onClick={compare}>
-          <IoStatsChartOutline size={20} /> {comparing ? "Iniciando..." : "Comparar Lista"}
-        </button>
-      </div>
-    </>
+          {a && a === b && <ErrorBox>Elegí dos listas distintas.</ErrorBox>}
+          <ErrorBox>{start.error ? errMsg(start.error) : ""}</ErrorBox>
+        </>
+      )}
+    </Modal>
   );
 }
